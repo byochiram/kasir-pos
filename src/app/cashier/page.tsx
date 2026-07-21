@@ -131,12 +131,20 @@ export default function CashierPage() {
           items: cart.map((i) => ({ product_id: i.product.id, quantity: i.quantity, discount: i.discount, discount_type: 'amount' })),
         }),
       });
+      const data = await res.json();
       if (res.ok) {
-        setReceipt(await res.json());
+        setReceipt(data);
         setCart([]); setAmountPaid(''); setTrxDiscount(''); setSelectedCustomerId('');
         fetchData();
-      } else { alert((await res.json()).error || 'Gagal memproses transaksi'); }
-    } catch { alert('Gagal memproses transaksi'); } finally { setProcessing(false); }
+      } else {
+        alert(data.error || 'Gagal memproses transaksi');
+      }
+    } catch (err) {
+      console.error('Transaction error:', err);
+      alert('Gagal memproses transaksi. Cek koneksi.');
+    } finally {
+      setProcessing(false);
+    }
   }
 
   if (loading) return (

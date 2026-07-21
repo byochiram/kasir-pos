@@ -351,7 +351,9 @@ export function createTransaction(data: {
 
   const itemsWithDetails = data.items.map(item => {
     const product = getProductById(item.product_id);
-    if (!product) throw new Error(`Product ${item.product_id} not found`);
+    if (!product) throw new Error(`Produk dengan ID ${item.product_id} tidak ditemukan`);
+    if (product.stock < item.quantity) throw new Error(`Stok ${product.name} tidak cukup (tersedia: ${product.stock}, diminta: ${item.quantity})`);
+    if (item.quantity <= 0) throw new Error(`Quantity tidak valid untuk ${product.name}`);
     let itemSubtotal = product.price * item.quantity;
     if (item.discount) {
       if (item.discount_type === 'percent') {
@@ -389,6 +391,14 @@ export function createTransaction(data: {
   const change = data.amount_paid - total;
 
   const createTx = d.transaction(() => {
+    // Cek stok di dalam transaction (cegah race condition)
+    for (const item of itemsWithDetails) {
+      const currentStock = d.prepare('SELECT stock FROM products WHERE id = ?').get(item.product_id) as any;
+      if (!currentStock || currentStock.stock < item.quantity) {
+        throw new Error(`Stok ${item.product_name} tidak cukup (tersedia: ${currentStock?.stock || 0}, diminta: ${item.quantity})`);
+      }
+    }
+
     d.prepare(`INSERT INTO transactions (id, customer_id, user_id, subtotal, discount, discount_type, tax_rate, tax_amount, total, payment_method, amount_paid, change, notes, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed')`).run(
       id, data.customer_id || null, data.user_id, subtotal, txDiscount, data.discount_type || 'amount', taxRate, taxAmount, total, data.payment_method, data.amount_paid, change, data.notes || ''
