@@ -78,6 +78,12 @@ interface ChargeResponse {
   transaction_status?: string;
   expiry_time?: string;
   actions?: ChargeAction[];
+  /** Isi mentah QR. Sama dengan yang tergambar di kode QR, jadi bukan rahasia. */
+  qr_string?: string;
+}
+
+export function isSandbox(): boolean {
+  return process.env.MIDTRANS_IS_PRODUCTION !== 'true';
 }
 
 async function callApi<T>(path: string, init: RequestInit): Promise<T> {
@@ -116,6 +122,7 @@ export interface QrisCharge {
   orderId: string;
   providerRef: string | null;
   qrUrl: string;
+  qrString: string | null;
   /** Waktu kedaluwarsa dalam UTC, format "YYYY-MM-DD HH:MM:SS". */
   expiresAt: string;
   raw: unknown;
@@ -159,6 +166,7 @@ export async function chargeQris(orderId: string, amount: number): Promise<QrisC
     orderId,
     providerRef: result.transaction_id ?? null,
     qrUrl: qr.url,
+    qrString: result.qr_string ?? null,
     expiresAt,
     raw: result,
   };

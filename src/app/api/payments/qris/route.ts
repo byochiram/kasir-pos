@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { requireAuth } from '@/lib/auth';
-import { attachPaymentDetails, getTransactionById, recordPaymentEvent } from '@/lib/db';
+import { attachPaymentDetails, getLastQrString, getTransactionById, recordPaymentEvent } from '@/lib/db';
 import { badRequest, conflict, forbidden, json, notFound, readBody, route } from '@/lib/http';
-import { chargeQris } from '@/lib/midtrans';
+import { chargeQris, isSandbox } from '@/lib/midtrans';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -25,7 +25,13 @@ export const POST = route(async (request) => {
 
   // QR yang masih berlaku dipakai ulang, jangan buat tagihan ganda di gateway.
   if (tx.payment_qr_url && tx.payment_expires_at && new Date(`${tx.payment_expires_at}Z`) > new Date()) {
-    return json({ qr_url: tx.payment_qr_url, expires_at: tx.payment_expires_at, reused: true });
+    return json({
+      qr_url: tx.payment_qr_url,
+      qr_string: isSandbox() ? getLastQrString(tx.id) : null,
+      expires_at: tx.payment_expires_at,
+      sandbox: isSandbox(),
+      reused: true,
+    });
   }
 
   const charge = await chargeQris(tx.invoice_no, tx.total);
@@ -40,5 +46,16 @@ export const POST = route(async (request) => {
     raw: charge.raw,
   });
 
-  return json({ qr_url: charge.qrUrl, expires_at: charge.expiresAt, reused: false }, 201);
+  return json(
+    {
+      qr_url: charge.qrUrl,
+      // Hanya di sandbox: dipakai menempel ke simulator Midtrans untuk menguji
+      // pembayaran. Di produksi tidak ada gunanya, jadi tidak dikirim.
+      qr_string: isSandbox() ? charge.qrString : null,
+      expires_at: charge.expiresAt,
+      sandbox: isSandbox(),
+      reused: false,
+    },
+    201,
+  );
 });

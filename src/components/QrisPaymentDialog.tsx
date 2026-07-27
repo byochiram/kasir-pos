@@ -12,7 +12,9 @@ import type { TransactionWithRelations } from '@/lib/types';
 
 interface QrisResponse {
   qr_url: string;
+  qr_string: string | null;
   expires_at: string;
+  sandbox: boolean;
   reused: boolean;
 }
 
@@ -118,6 +120,7 @@ function QrisFlow({
     return () => clearInterval(timer);
   }, [qr, settled]);
 
+  const sandboxQrString = qr?.sandbox ? qr.qr_string : null;
   const deadline = qr?.expires_at ? parseUtc(qr.expires_at)?.getTime() : undefined;
   const secondsLeft = deadline ? Math.max(0, Math.round((deadline - now) / 1000)) : null;
   const nearlyExpired = secondsLeft !== null && secondsLeft < 60;
@@ -177,6 +180,50 @@ function QrisFlow({
             Minta pelanggan memindai dengan aplikasi bank atau e-wallet apa pun. Struk muncul otomatis begitu
             pembayaran masuk.
           </p>
+
+          {/* Hanya muncul di sandbox: QR uji tidak bisa dibayar aplikasi sungguhan,
+              jadi pengujian dilakukan lewat simulator Midtrans. */}
+          {sandboxQrString && (
+            <details className="rounded-xl border border-dashed border-line p-3 text-left">
+              <summary className="cursor-pointer text-xs font-medium text-ink-muted">
+                Mode sandbox — bayar lewat simulator
+              </summary>
+              <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs text-ink-muted">
+                <li>Salin teks QR di bawah</li>
+                <li>
+                  Buka{' '}
+                  <a
+                    href="https://simulator.sandbox.midtrans.com/qris/index"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium text-emerald-600 underline dark:text-emerald-300"
+                  >
+                    simulator QRIS Midtrans
+                  </a>
+                </li>
+                <li>Tempel, lalu tekan bayar</li>
+              </ol>
+              <textarea
+                readOnly
+                value={sandboxQrString}
+                rows={2}
+                onFocus={(event) => event.currentTarget.select()}
+                aria-label="Teks QR untuk simulator"
+                className="mt-2 w-full resize-none rounded-lg border border-line bg-surface-2 p-2 font-mono text-[10px] text-ink-muted"
+              />
+              <Button
+                variant="secondary"
+                size="sm"
+                className="mt-2 w-full"
+                onClick={() => {
+                  void navigator.clipboard.writeText(sandboxQrString);
+                  toast.success('Teks QR disalin');
+                }}
+              >
+                Salin teks QR
+              </Button>
+            </details>
+          )}
         </>
       )}
 

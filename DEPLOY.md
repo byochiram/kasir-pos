@@ -86,8 +86,13 @@ Arahkan dulu A record subdomain ke IP VPS sebelum menjalankan certbot.
 Sandbox Midtrans tidak memerlukan verifikasi badan usaha.
 
 1. Daftar di <https://dashboard.sandbox.midtrans.com>
-2. **Settings → Access Keys** → salin *Server Key*, isikan ke `MIDTRANS_SERVER_KEY`
-   di `.env.production`
+2. Pastikan pengalih **Environment** di sidebar dashboard menunjuk **Sandbox**,
+   lalu **Settings → Access Keys** → salin *Server Key* ke `MIDTRANS_SERVER_KEY`
+   di `.env.production`.
+
+   Yang menentukan aplikasi menembak sandbox atau produksi adalah
+   `MIDTRANS_IS_PRODUCTION`, bukan bentuk kuncinya — jadi pastikan keduanya
+   cocok: kunci sandbox dengan `MIDTRANS_IS_PRODUCTION=false`.
 3. **Settings → Configuration → Payment Notification URL**:
    `https://kasir.domain-anda.com/api/payments/midtrans/webhook`
 4. Terapkan: `docker compose up -d`
