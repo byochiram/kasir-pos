@@ -344,7 +344,7 @@ export default function CashierPage() {
             type="button"
             onClick={() => setCartOpenMobile(false)}
             aria-label="Tutup keranjang"
-            className="rounded-lg p-1 text-ink-subtle hover:bg-surface-3 lg:hidden"
+            className="rounded-lg p-1 text-ink-subtle hover:bg-surface-3 md:hidden"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -656,9 +656,9 @@ export default function CashierPage() {
   );
 
   return (
-    <div className="flex h-full gap-0 overflow-hidden lg:gap-4 lg:p-4">
-      <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-surface-2 lg:rounded-2xl lg:border lg:border-line lg:bg-surface">
-        <div className="flex shrink-0 flex-col gap-2 border-b border-line bg-surface p-3 pl-14 sm:flex-row lg:pl-3">
+    <div className="flex h-full gap-0 overflow-hidden md:gap-3 md:p-3 lg:gap-4 lg:p-4">
+      <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-surface-2 md:rounded-2xl md:border md:border-line md:bg-surface">
+        <div className="flex shrink-0 flex-col gap-2 border-b border-line bg-surface p-3 pl-14 sm:flex-row lg:pl-3 xl:pl-3">
           <div className="relative min-w-0 flex-1">
             <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-subtle" aria-hidden>
               🔍
@@ -694,7 +694,7 @@ export default function CashierPage() {
           {filteredProducts.length === 0 ? (
             <EmptyState icon="🔍" title="Produk tidak ditemukan" description="Coba kata kunci atau kategori lain." />
           ) : (
-            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {filteredProducts.map((product) => {
                 const inCart = cart.find((line) => line.productId === product.id);
                 const out = product.stock <= 0;
@@ -741,7 +741,7 @@ export default function CashierPage() {
       </section>
 
       {/* Desktop: panel keranjang menempel di kanan. */}
-      <aside className="hidden w-[380px] shrink-0 overflow-hidden rounded-2xl border border-line shadow-sm lg:block">
+      <aside className="hidden w-[320px] shrink-0 overflow-hidden rounded-2xl border border-line shadow-sm md:block lg:w-[380px]">
         {cartPanel}
       </aside>
 
@@ -750,7 +750,7 @@ export default function CashierPage() {
         <button
           type="button"
           onClick={() => setCartOpenMobile(true)}
-          className="fixed bottom-4 left-4 right-4 z-30 flex items-center justify-between rounded-2xl bg-emerald-600 px-5 py-3.5 text-white shadow-lg lg:hidden"
+          className="fixed bottom-4 left-4 right-4 z-30 flex items-center justify-between rounded-2xl bg-emerald-600 px-5 py-3.5 text-white shadow-lg md:hidden"
         >
           <span className="font-semibold">{itemCount} item di keranjang</span>
           <span className="font-bold">{formatRupiah(total)}</span>
@@ -758,7 +758,7 @@ export default function CashierPage() {
       )}
 
       {cartOpenMobile && (
-        <div className="fixed inset-0 z-40 lg:hidden">
+        <div className="fixed inset-0 z-40 md:hidden">
           <div
             className="animate-fade-in absolute inset-0 bg-slate-900/50"
             onClick={() => setCartOpenMobile(false)}

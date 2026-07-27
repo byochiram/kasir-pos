@@ -155,13 +155,11 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <div className="flex min-h-dvh">
-      <div className="relative hidden flex-1 overflow-hidden bg-gradient-to-br from-emerald-50 via-surface to-teal-50 lg:flex lg:flex-col lg:justify-center lg:px-14 dark:from-emerald-950/40 dark:via-surface dark:to-teal-950/30">
-        {/* Aksen lembut; tetap terang di mode gelap tanpa jadi menyilaukan. */}
-        <div className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-emerald-300/35 blur-3xl dark:bg-emerald-500/15" aria-hidden />
-        <div className="absolute -bottom-40 -right-24 h-96 w-96 rounded-full bg-teal-300/30 blur-3xl dark:bg-teal-500/10" aria-hidden />
-
-        <div className="relative">
-          <div className="mb-7 flex items-center gap-3">
+      {/* Panel kiri memakai warna abu yang sama dengan panel kanan; pemisahnya
+          cukup satu garis tipis, bukan gradasi atau blok warna. */}
+      <div className="hidden flex-1 border-r border-line bg-surface-2 lg:flex lg:flex-col lg:justify-center lg:px-14">
+        <div>
+          <div className="mb-8 flex items-center gap-3">
             <LogoMark className="h-12 w-12" />
             <LogoWordmark className="text-2xl text-ink" />
           </div>
@@ -173,33 +171,27 @@ export default function LoginPage() {
             Aplikasi kasir yang mencatat setiap transaksi, stok, dan laba — tanpa ribet.
           </p>
 
-          <ul className="mt-9 max-w-md space-y-2.5">
+          <ul className="mt-10 max-w-md space-y-5">
             {FEATURES.map((feature) => (
-              <li
-                key={feature.text}
-                className="flex items-center gap-3.5 rounded-2xl border border-line/80 bg-surface/70 p-3 shadow-sm backdrop-blur-sm"
-              >
-                <span
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600/10 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300"
-                  aria-hidden
-                >
+              <li key={feature.text} className="flex items-center gap-3.5">
+                <span className="shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden>
                   <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d={feature.icon} />
                   </svg>
                 </span>
-                <span className="text-sm font-medium text-ink">{feature.text}</span>
+                <span className="text-sm text-ink-muted">{feature.text}</span>
               </li>
             ))}
           </ul>
 
-          <p className="mt-8 max-w-md text-xs text-ink-subtle">
+          <p className="mt-12 max-w-md text-xs text-ink-subtle">
             Dibangun dengan Next.js, SQLite, dan integrasi pembayaran Midtrans.
           </p>
         </div>
       </div>
 
-      <div className="flex flex-1 items-center justify-center overflow-y-auto bg-surface px-5 py-10 lg:bg-surface-2">
-        <div className="w-full max-w-[400px] lg:rounded-3xl lg:border lg:border-line lg:bg-surface lg:p-8 lg:shadow-sm">
+      <div className="flex flex-1 items-center justify-center overflow-y-auto bg-surface-2 px-5 py-10">
+        <div className="w-full max-w-[380px]">
           {/* Logo hanya di mobile; di desktop sudah tampil besar di panel kiri. */}
           <div className="mb-7 flex items-center gap-3 lg:hidden">
             <LogoMark className="h-11 w-11" />
