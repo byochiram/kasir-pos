@@ -39,7 +39,7 @@ export default function ThemeToggle({ collapsed }: { collapsed: boolean }) {
       onClick={() => setThemePreference(NEXT[preference])}
       title={collapsed ? `${label} — klik untuk ganti` : undefined}
       aria-label={`${label}. Klik untuk mengganti ke ${THEME_LABELS[NEXT[preference]]}`}
-      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white ${
+      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink ${
         collapsed ? 'justify-center px-0' : ''
       }`}
     >

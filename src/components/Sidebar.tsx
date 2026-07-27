@@ -9,6 +9,7 @@ import { useApp } from '@/components/AppProvider';
 import type { Role } from '@/lib/types';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import ThemeToggle from '@/components/ThemeToggle';
+import { LogoMark, LogoWordmark } from '@/components/Logo';
 
 interface NavItem {
   href: string;
@@ -201,23 +202,21 @@ export default function Sidebar() {
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex shrink-0 flex-col bg-slate-900 text-slate-300 transition-[width,transform] duration-300 lg:static lg:translate-x-0
+        className={`fixed inset-y-0 left-0 z-50 flex shrink-0 flex-col border-r border-line bg-surface text-ink-muted transition-[width,transform] duration-300 lg:static lg:translate-x-0
           ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
           ${collapsed ? 'w-16' : 'w-60'}`}
         aria-label="Navigasi utama"
       >
-        <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-white/10 px-3">
+        <div className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-line px-3">
           <Link href="/" className="flex min-w-0 items-center gap-2.5">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500 text-sm font-black text-white">
-              K
-            </span>
-            {!collapsed && <span className="truncate font-bold text-white">KasirApp</span>}
+            <LogoMark className="h-9 w-9 shrink-0" />
+            {!collapsed && <LogoWordmark className="truncate text-ink" />}
           </Link>
           <button
             type="button"
             onClick={() => setMobileOpen(false)}
             aria-label="Tutup menu"
-            className="rounded-lg p-1.5 text-ink-subtle hover:bg-white/10 hover:text-white lg:hidden"
+            className="rounded-lg p-1.5 text-ink-subtle hover:bg-surface-2 hover:text-ink lg:hidden"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -235,7 +234,7 @@ export default function Sidebar() {
                 title={collapsed ? item.label : undefined}
                 aria-current={active ? 'page' : undefined}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                  active ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-300 hover:bg-white/10 hover:text-white'
+                  active ? 'bg-emerald-600 text-white shadow-sm' : 'text-ink-muted hover:bg-surface-2 hover:text-ink'
                 } ${collapsed ? 'justify-center px-0' : ''}`}
               >
                 <span className="shrink-0">{item.icon}</span>
@@ -245,19 +244,21 @@ export default function Sidebar() {
           })}
         </nav>
 
-        <div className="shrink-0 border-t border-white/10 p-2">
+        <div className="shrink-0 border-t border-line p-2">
           {user && (
             <div className={`mb-2 flex items-center gap-2.5 rounded-xl px-2 py-2 ${collapsed ? 'justify-center' : ''}`}>
               <span
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-700 text-xs font-bold text-white"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white"
                 title={collapsed ? `${user.name} (${user.role})` : undefined}
               >
                 {initials(user.name)}
               </span>
               {!collapsed && (
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-white">{user.name}</p>
-                  <p className="truncate text-[11px] uppercase tracking-wide text-emerald-400">{user.role}</p>
+                  <p className="truncate text-sm font-semibold text-ink">{user.name}</p>
+                  <p className="truncate text-[11px] uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
+                    {user.role}
+                  </p>
                 </div>
               )}
             </div>
@@ -269,7 +270,7 @@ export default function Sidebar() {
             type="button"
             onClick={() => setConfirmLogout(true)}
             title={collapsed ? 'Keluar' : undefined}
-            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:bg-red-500/15 hover:text-red-300 ${
+            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-ink-muted transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/15 dark:hover:text-red-300 ${
               collapsed ? 'justify-center px-0' : ''
             }`}
           >
@@ -288,7 +289,7 @@ export default function Sidebar() {
             type="button"
             onClick={toggleCollapsed}
             aria-label={collapsed ? 'Perlebar sidebar' : 'Perkecil sidebar'}
-            className={`mt-1 hidden w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-ink-subtle transition-colors hover:bg-white/10 hover:text-white lg:flex ${
+            className={`mt-1 hidden w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-ink-subtle transition-colors hover:bg-surface-2 hover:text-ink lg:flex ${
               collapsed ? 'justify-center px-0' : ''
             }`}
           >

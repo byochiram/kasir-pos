@@ -5,6 +5,12 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { api, errorMessage } from '@/lib/api-client';
 import { useApp } from '@/components/AppProvider';
 import Button from '@/components/ui/Button';
+import { LogoMark, LogoWordmark } from '@/components/Logo';
+
+const DEMO_ACCOUNTS = [
+  { role: 'Admin', email: 'admin@kasir.com', password: 'admin123' },
+  { role: 'Kasir', email: 'kasir@kasir.com', password: 'kasir123' },
+];
 
 function LoginForm() {
   const router = useRouter();
@@ -95,6 +101,33 @@ function LoginForm() {
       <Button type="submit" loading={loading} className="w-full py-3">
         {loading ? 'Masuk...' : 'Masuk'}
       </Button>
+
+      {/* Sengaja selalu tampil: aplikasi ini dipublikasikan sebagai portfolio,
+          jadi siapa pun yang membukanya harus bisa langsung mencoba. */}
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3.5 dark:border-emerald-500/30 dark:bg-emerald-500/10">
+        <p className="mb-2 text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+          Akun demo — silakan dicoba
+        </p>
+        <div className="space-y-1.5">
+          {DEMO_ACCOUNTS.map((account) => (
+            <button
+              key={account.role}
+              type="button"
+              onClick={() => {
+                setEmail(account.email);
+                setPassword(account.password);
+              }}
+              className="flex w-full items-center justify-between gap-3 rounded-lg border border-emerald-200/70 bg-surface px-3 py-2 text-left text-xs transition-colors hover:border-emerald-400 dark:border-emerald-500/20"
+            >
+              <span className="min-w-0">
+                <span className="font-semibold text-ink">{account.role}</span>
+                <span className="ml-2 text-ink-muted">{account.email}</span>
+              </span>
+              <span className="shrink-0 font-medium text-emerald-700 dark:text-emerald-300">Isi otomatis</span>
+            </button>
+          ))}
+        </div>
+      </div>
     </form>
   );
 }
@@ -102,36 +135,39 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <div className="flex min-h-dvh">
-      <div className="relative hidden flex-1 overflow-hidden bg-slate-900 lg:flex lg:flex-col lg:justify-center lg:px-14">
-        <div
-          className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-emerald-500/20 blur-3xl"
-          aria-hidden
-        />
-        <div
-          className="absolute -bottom-32 -right-20 h-96 w-96 rounded-full bg-emerald-400/10 blur-3xl"
-          aria-hidden
-        />
+      <div className="relative hidden flex-1 overflow-hidden bg-gradient-to-br from-emerald-50 via-surface to-teal-50 lg:flex lg:flex-col lg:justify-center lg:px-14 dark:from-emerald-950/40 dark:via-surface dark:to-teal-950/30">
+        {/* Aksen lembut; tetap terang di mode gelap tanpa jadi menyilaukan. */}
+        <div className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-emerald-300/35 blur-3xl dark:bg-emerald-500/15" aria-hidden />
+        <div className="absolute -bottom-40 -right-24 h-96 w-96 rounded-full bg-teal-300/30 blur-3xl dark:bg-teal-500/10" aria-hidden />
+
         <div className="relative">
-          <div className="mb-6 flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-500 text-lg font-black text-white">
-              K
-            </span>
-            <span className="text-2xl font-bold text-white">KasirApp</span>
+          <div className="mb-7 flex items-center gap-3">
+            <LogoMark className="h-12 w-12" />
+            <LogoWordmark className="text-2xl text-ink" />
           </div>
-          <h1 className="max-w-md text-3xl font-bold leading-tight text-white">
+
+          <h1 className="max-w-md text-4xl font-bold leading-tight tracking-tight text-ink">
             Kelola penjualan toko Anda dalam satu tempat.
           </h1>
-          <ul className="mt-8 space-y-3 text-sm text-slate-300">
+          <p className="mt-4 max-w-md text-ink-muted">
+            Aplikasi kasir yang mencatat setiap transaksi, stok, dan laba — tanpa ribet.
+          </p>
+
+          <ul className="mt-9 space-y-3.5">
             {[
-              'Transaksi cepat dengan dukungan scan barcode',
-              'Stok otomatis terpotong dan tercatat riwayatnya',
-              'Laporan penjualan, laba, dan pengeluaran harian',
-            ].map((item) => (
-              <li key={item} className="flex items-start gap-2.5">
-                <span className="mt-0.5 text-emerald-400" aria-hidden>
-                  ✓
+              ['🧾', 'Transaksi cepat dengan dukungan scan barcode'],
+              ['📦', 'Stok otomatis terpotong dan tercatat riwayatnya'],
+              ['📱', 'Pembayaran QRIS dan transfer terkonfirmasi otomatis'],
+              ['📊', 'Laporan penjualan, laba, dan pengeluaran harian'],
+            ].map(([icon, item]) => (
+              <li key={item} className="flex items-center gap-3">
+                <span
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-line bg-surface text-base shadow-sm"
+                  aria-hidden
+                >
+                  {icon}
                 </span>
-                {item}
+                <span className="text-sm text-ink-muted">{item}</span>
               </li>
             ))}
           </ul>
@@ -140,11 +176,9 @@ export default function LoginPage() {
 
       <div className="flex flex-1 items-center justify-center overflow-y-auto bg-surface-2 px-5 py-10">
         <div className="w-full max-w-[380px]">
-          <div className="mb-7 lg:hidden">
-            <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-500 text-lg font-black text-white">
-              K
-            </span>
-            <h1 className="text-xl font-bold text-ink">KasirApp</h1>
+          <div className="mb-7 flex items-center gap-3 lg:hidden">
+            <LogoMark className="h-11 w-11" />
+            <LogoWordmark className="text-xl text-ink" />
           </div>
 
           <h2 className="text-xl font-bold text-ink">Masuk ke akun Anda</h2>
@@ -153,14 +187,6 @@ export default function LoginPage() {
           <Suspense fallback={<div className="h-64 animate-pulse rounded-xl bg-surface-3" />}>
             <LoginForm />
           </Suspense>
-
-          {process.env.NODE_ENV === 'development' && (
-            <div className="mt-6 rounded-xl border border-dashed border-line bg-surface p-3 text-xs text-ink-muted">
-              <p className="mb-1 font-semibold text-ink-muted">Akun demo (hanya tampil saat development)</p>
-              <p>Admin — admin@kasir.com / admin123</p>
-              <p>Kasir — kasir@kasir.com / kasir123</p>
-            </div>
-          )}
         </div>
       </div>
     </div>
