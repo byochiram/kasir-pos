@@ -141,6 +141,14 @@ export async function chargeQris(orderId: string, amount: number): Promise<QrisC
 
   const result = await callApi<ChargeResponse>('/v2/charge', { method: 'POST', body: JSON.stringify(body) });
 
+  // 406 = order_id sudah pernah dipakai. Artinya tagihannya memang sudah ada di
+  // gateway — misalnya karena permintaan kembar, atau proses sempat mati setelah
+  // charge tapi sebelum QR tersimpan. Ambil saja yang sudah ada, jangan gagalkan.
+  if (result.status_code === '406') {
+    const recovered = await recoverExistingQris(orderId, amount);
+    if (recovered) return recovered;
+  }
+
   // 201 = berhasil dibuat. Kode lain berarti gagal, dan pesannya layak diteruskan.
   if (result.status_code !== '201' && result.status_code !== '200') {
     throw new AppError(
@@ -165,6 +173,42 @@ export async function chargeQris(orderId: string, amount: number): Promise<QrisC
     qrUrl: qr.url,
     expiresAt,
     raw: result,
+  };
+}
+
+/** Mengubah waktu kedaluwarsa Midtrans (WIB tanpa penanda zona) ke UTC. */
+function toUtcTimestamp(expiryTime?: string): string {
+  if (!expiryTime) {
+    return new Date(Date.now() + QRIS_EXPIRY_MINUTES * 60_000).toISOString().slice(0, 19).replace('T', ' ');
+  }
+  return new Date(`${expiryTime.replace(' ', 'T')}+07:00`).toISOString().slice(0, 19).replace('T', ' ');
+}
+
+/**
+ * Mengambil kembali tagihan QRIS yang sudah terlanjur dibuat di gateway.
+ *
+ * Endpoint status tidak mengembalikan daftar `actions`, jadi URL gambar QR
+ * disusun dari transaction_id — polanya sama dengan yang dikembalikan endpoint
+ * charge.
+ */
+async function recoverExistingQris(orderId: string, amount: number): Promise<QrisCharge | null> {
+  const status = await callApi<ChargeResponse & { fraud_status?: string }>(
+    `/v2/${encodeURIComponent(orderId)}/status`,
+    { method: 'GET' },
+  );
+
+  if (!status.transaction_id) return null;
+  // Hanya tagihan yang masih menunggu bayar yang layak dipakai ulang.
+  if (mapStatus(status.transaction_status ?? '', status.fraud_status) !== 'pending') return null;
+  // Nominalnya wajib sama; kalau beda, ini order_id milik tagihan lain.
+  if (Math.round(Number.parseFloat(status.gross_amount ?? '0')) !== amount) return null;
+
+  return {
+    orderId,
+    providerRef: status.transaction_id,
+    qrUrl: `${baseUrl()}/v2/qris/${status.transaction_id}/qr-code`,
+    expiresAt: toUtcTimestamp(status.expiry_time),
+    raw: status,
   };
 }
 
