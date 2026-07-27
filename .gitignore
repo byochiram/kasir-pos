@@ -46,4 +46,6 @@ next-env.d.ts
 *.db-shm
 *.db-wal
 *.db.backup
+*.db.before-restore-*
+*.db.incoming-*
 dev.log

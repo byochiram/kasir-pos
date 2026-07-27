@@ -46,6 +46,15 @@ export function getDb(): Database.Database {
   return globalForDb.__kasirDb;
 }
 
+export function getDbPath(): string {
+  return DB_PATH;
+}
+
+/** Dipanggil setelah pemulihan backup agar pengaturan tidak terbaca dari cache lama. */
+export function clearSettingsCache(): void {
+  settingsCache = null;
+}
+
 // ============================================================================
 // MIGRASI
 // ============================================================================
@@ -271,7 +280,11 @@ const migrations: { version: number; up: (db: Database.Database) => void }[] = [
   },
 ];
 
-function migrate(db: Database.Database): void {
+/**
+ * Menerapkan migrasi yang belum dijalankan. Diekspor supaya file backup lama
+ * bisa dinaikkan ke skema terkini sebelum datanya disalin masuk.
+ */
+export function runMigrations(db: Database.Database): void {
   const current = (db.pragma('user_version', { simple: true }) as number) ?? 0;
   for (const migration of migrations) {
     if (migration.version <= current) continue;
@@ -280,6 +293,10 @@ function migrate(db: Database.Database): void {
       db.pragma(`user_version = ${migration.version}`);
     })();
   }
+}
+
+function migrate(db: Database.Database): void {
+  runMigrations(db);
   seedIfEmpty(db);
 }
 

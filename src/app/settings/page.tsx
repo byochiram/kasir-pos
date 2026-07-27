@@ -7,6 +7,7 @@ import { formatRupiah } from '@/lib/format';
 import { useApp } from '@/components/AppProvider';
 import { useToast } from '@/components/ui/Toast';
 import PageHeader from '@/components/PageHeader';
+import BackupPanel from '@/components/BackupPanel';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
@@ -247,6 +248,11 @@ function SettingsForm({ settings }: { settings: Settings }) {
           </div>
         </aside>
       </form>
+
+      {/* Di luar <form> pengaturan: backup bukan bagian dari "simpan pengaturan". */}
+      <div className="mt-4 lg:w-2/3 lg:pr-2">
+        <BackupPanel />
+      </div>
 
       <ChangePasswordModal open={passwordOpen} onClose={() => setPasswordOpen(false)} />
     </>

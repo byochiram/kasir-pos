@@ -93,6 +93,14 @@ transaksi ditandai `voided` — barisnya tidak pernah dihapus.
 **Penghapusan data.** Produk, pelanggan, supplier, dan user memakai *soft delete*. Riwayat
 transaksi yang menunjuk ke data tersebut tetap utuh dan laporan lama tidak berubah.
 
+**Backup & pemulihan.** Ada di **Pengaturan → Backup & Pemulihan** (khusus admin). Unduhan
+memakai `VACUUM INTO` supaya snapshot-nya utuh — menyalin `kasir.db` mentah-mentah tidak
+aman karena transaksi terbaru masih berada di file WAL. Saat memulihkan, file diperiksa
+dulu (harus SQLite, punya semua tabel KasirApp, dan punya minimal satu admin aktif), skemanya
+dinaikkan ke versi terkini bila berasal dari backup lama, lalu datanya disalin masuk dalam
+satu transaksi. Data lama otomatis disimpan sebagai `kasir.db.before-restore-<waktu>` di
+folder aplikasi dan file itu sendiri bisa diunggah kembali bila pemulihan ternyata keliru.
+
 ## Struktur
 
 ```
