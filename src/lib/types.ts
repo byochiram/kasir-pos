@@ -2,14 +2,39 @@
 export const ROLES = ['ADMIN', 'KASIR'] as const;
 export type Role = (typeof ROLES)[number];
 
-export const PAYMENT_METHODS = ['cash', 'qris', 'transfer', 'debit'] as const;
+/** `qris_online` diproses lewat payment gateway; `qris` adalah stiker statis
+ *  yang dicatat manual oleh kasir. */
+export const PAYMENT_METHODS = ['cash', 'qris', 'qris_online', 'transfer', 'debit'] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  cash: 'Tunai',
+  qris: 'QRIS (manual)',
+  qris_online: 'QRIS',
+  transfer: 'Transfer',
+  debit: 'Debit',
+};
+
+/** Metode yang uangnya dikonfirmasi gateway, bukan dipercaya begitu saja. */
+export const GATEWAY_METHODS: readonly PaymentMethod[] = ['qris_online'];
+
+export const PAYMENT_STATUSES = ['unpaid', 'pending', 'paid', 'expired', 'failed'] as const;
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
 export const DISCOUNT_TYPES = ['amount', 'percent'] as const;
 export type DiscountType = (typeof DISCOUNT_TYPES)[number];
 
-export const TRANSACTION_STATUSES = ['completed', 'voided'] as const;
+/** `pending` = menunggu dana masuk lewat gateway. Stok sudah dipesan, tapi
+ *  transaksi belum dihitung sebagai omzet sampai statusnya `completed`. */
+export const TRANSACTION_STATUSES = ['pending', 'completed', 'voided', 'expired'] as const;
 export type TransactionStatus = (typeof TRANSACTION_STATUSES)[number];
+
+export const TRANSACTION_STATUS_LABELS: Record<TransactionStatus, string> = {
+  pending: 'Menunggu Bayar',
+  completed: 'Selesai',
+  voided: 'Dibatalkan',
+  expired: 'Kedaluwarsa',
+};
 
 export const STOCK_MOVEMENT_TYPES = ['in', 'out', 'adjustment', 'sale', 'void'] as const;
 export type StockMovementType = (typeof STOCK_MOVEMENT_TYPES)[number];
@@ -124,6 +149,12 @@ export interface Transaction {
   change: number;
   notes: string;
   status: TransactionStatus;
+  payment_status: PaymentStatus;
+  /** order_id yang dikirim ke gateway; sama dengan invoice_no. */
+  payment_ref: string | null;
+  payment_qr_url: string | null;
+  payment_expires_at: string | null;
+  paid_at: string | null;
   voided_at: string | null;
   voided_by: string | null;
   void_reason: string | null;

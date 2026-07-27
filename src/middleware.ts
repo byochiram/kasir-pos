@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken, TOKEN_COOKIE } from '@/lib/auth';
 
-/** Hanya login yang boleh diakses tanpa token. Pendaftaran mandiri sengaja tidak ada:
- *  akun baru hanya bisa dibuat admin lewat /users. */
-const PUBLIC_PATHS = ['/login', '/api/auth/login'];
+/**
+ * Hanya login yang boleh diakses tanpa token. Pendaftaran mandiri sengaja tidak
+ * ada: akun baru hanya bisa dibuat admin lewat /users.
+ *
+ * Webhook pembayaran juga publik — pemanggilnya server Midtrans, bukan browser
+ * yang login. Keasliannya diperiksa lewat signature SHA-512 di dalam handler,
+ * bukan lewat cookie sesi.
+ */
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/payments/midtrans/webhook'];
 
 /** Halaman yang hanya boleh dibuka ADMIN. API punya pengecekan sendiri di tiap route. */
 const ADMIN_PATHS = ['/users', '/settings', '/reports', '/suppliers', '/expenses', '/purchase-orders'];

@@ -108,6 +108,22 @@ dinaikkan ke versi terkini bila berasal dari backup lama, lalu datanya disalin m
 satu transaksi. Data lama otomatis disimpan sebagai `kasir.db.before-restore-<waktu>` di
 folder aplikasi dan file itu sendiri bisa diunggah kembali bila pemulihan ternyata keliru.
 
+**Pembayaran QRIS.** Metode QRIS diproses lewat Midtrans Core API, bukan sekadar dicatat.
+Saat kasir menekan Bayar, transaksi dibuat berstatus `pending` — stok sudah dipotong agar
+barang yang sama tidak terjual dua kali, tapi belum dihitung sebagai omzet dan poin pelanggan
+belum diberikan. Kode QR ditampilkan beserta hitung mundur; begitu dana masuk, transaksi jadi
+`completed` dan struk muncul otomatis.
+
+Konfirmasi datang lewat **webhook** yang diverifikasi dengan tanda tangan SHA-512 — tanpa itu,
+siapa pun bisa mengirim JSON "sudah lunas" ke endpoint yang memang terbuka. Notifikasi dengan
+nominal berbeda dari tagihan juga ditolak. Layar kasir tetap **memeriksa status ke gateway**
+setiap 3 detik sebagai cadangan, karena webhook bisa telat atau gagal terkirim. Kedua jalur
+bersifat idempoten, jadi notifikasi yang dikirim ulang tidak menggandakan poin pelanggan.
+QR yang kedaluwarsa otomatis membatalkan transaksi dan mengembalikan stok.
+
+Tanpa `MIDTRANS_SERVER_KEY`, metode QRIS akan menolak dengan pesan yang jelas dan metode lain
+tetap berfungsi. Cara mengaktifkan ada di [DEPLOY.md](DEPLOY.md).
+
 **Mode gelap.** Tombol tema ada di bagian bawah sidebar dan berputar antara terang, gelap,
 dan mengikuti sistem. Pilihannya disimpan di browser dan diterapkan lewat skrip kecil di
 `<head>` sebelum halaman digambar, jadi tidak ada kedipan putih saat membuka aplikasi dalam
@@ -167,6 +183,14 @@ Untuk membuat ulang dari nol: hentikan server, hapus `kasir.db*`, lalu jalankan 
 | `F2`   | Fokus ke kolom cari / scan barcode                |
 | `F4`   | Bayar (atau lompat ke kolom uang diterima)        |
 | `Enter`| Tambahkan hasil scan barcode ke keranjang         |
+
+## Deploy
+
+Lihat [DEPLOY.md](DEPLOY.md) — Docker Compose dengan volume persisten, contoh reverse proxy
+nginx, HTTPS, dan cara mendaftarkan URL webhook Midtrans.
+
+Aplikasi ini **tidak cocok untuk platform serverless** seperti Vercel: SQLite butuh file yang
+bisa ditulis dan bertahan, sedangkan filesystem serverless bersifat sementara.
 
 ## Catatan penggunaan
 

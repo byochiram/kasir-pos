@@ -29,7 +29,7 @@ import type {
   TransactionWithRelations,
   UserRow,
 } from './types';
-import { PO_STATUS_LABELS } from './types';
+import { GATEWAY_METHODS, PO_STATUS_LABELS } from './types';
 
 const DB_PATH = process.env.DATABASE_PATH ?? path.join(process.cwd(), 'kasir.db');
 const BCRYPT_ROUNDS = 10;
@@ -327,6 +327,42 @@ const migrations: { version: number; up: (db: Database.Database) => void }[] = [
 
       // Menautkan stok masuk ke PO asalnya, untuk penelusuran.
       addColumn(db, 'stock_history', 'po_id', 'TEXT');
+    },
+  },
+  {
+    // Pembayaran lewat gateway: transaksi tidak lagi selalu langsung lunas.
+    version: 4,
+    up: (db) => {
+      addColumn(db, 'transactions', 'payment_status', "TEXT NOT NULL DEFAULT 'paid'");
+      addColumn(db, 'transactions', 'payment_ref', 'TEXT');
+      addColumn(db, 'transactions', 'payment_qr_url', 'TEXT');
+      addColumn(db, 'transactions', 'payment_expires_at', 'TEXT');
+      addColumn(db, 'transactions', 'paid_at', 'TEXT');
+
+      // Transaksi lama semuanya tunai/manual dan sudah dianggap lunas.
+      db.exec("UPDATE transactions SET paid_at = created_at WHERE paid_at IS NULL AND status = 'completed'");
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS payments (
+          id TEXT PRIMARY KEY,
+          transaction_id TEXT NOT NULL,
+          provider TEXT NOT NULL,
+          /* order_id yang dipakai di sisi gateway */
+          order_id TEXT NOT NULL,
+          /* id transaksi milik gateway, baru ada setelah ada respons */
+          provider_ref TEXT,
+          status TEXT NOT NULL,
+          amount INTEGER NOT NULL,
+          /* Payload mentah disimpan apa adanya: kalau ada sengketa, inilah buktinya. */
+          raw TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_payments_tx ON payments(transaction_id);
+        CREATE INDEX IF NOT EXISTS idx_payments_order ON payments(order_id);
+        CREATE INDEX IF NOT EXISTS idx_transactions_payment_ref ON transactions(payment_ref);
+      `);
     },
   },
 ];
@@ -1034,13 +1070,24 @@ export function createTransaction(input: CreateTransactionInput): TransactionWit
     }
     const change = amountPaid - total;
 
+    // Pembayaran lewat gateway belum tentu masuk. Transaksi ditahan di status
+    // pending sampai ada konfirmasi, jadi belum dihitung sebagai omzet — tapi
+    // stoknya tetap dipotong supaya barang yang sama tidak terjual dua kali.
+    const viaGateway = (GATEWAY_METHODS as readonly string[]).includes(input.payment_method);
+    if (viaGateway && total <= 0) {
+      throw badRequest('Transaksi bernilai nol tidak bisa dibayar lewat QRIS');
+    }
+    const status = viaGateway ? 'pending' : 'completed';
+    const paymentStatus = viaGateway ? 'unpaid' : 'paid';
+
     const id = randomUUID();
     const invoiceNo = nextInvoiceNo(db);
 
     db.prepare(
       `INSERT INTO transactions (id, invoice_no, customer_id, user_id, subtotal, discount, discount_type,
-        discount_amount, tax_rate, tax_amount, total, total_cost, payment_method, amount_paid, change, notes, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed')`,
+        discount_amount, tax_rate, tax_amount, total, total_cost, payment_method, amount_paid, change, notes,
+        status, payment_status, paid_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       invoiceNo,
@@ -1058,6 +1105,9 @@ export function createTransaction(input: CreateTransactionInput): TransactionWit
       amountPaid,
       change,
       input.notes,
+      status,
+      paymentStatus,
+      viaGateway ? null : new Date().toISOString().slice(0, 19).replace('T', ' '),
     );
 
     const insertItem = db.prepare(
@@ -1092,17 +1142,178 @@ export function createTransaction(input: CreateTransactionInput): TransactionWit
       });
     }
 
-    if (input.customer_id) {
-      const perAmount = settings.points_per_amount > 0 ? settings.points_per_amount : 10_000;
-      const points = Math.floor(total / perAmount);
-      db.prepare(
-        `UPDATE customers SET points = points + ?, total_spent = total_spent + ?, visit_count = visit_count + 1,
-         updated_at = datetime('now') WHERE id = ?`,
-      ).run(points, total, input.customer_id);
+    // Poin baru diberikan setelah dana benar-benar masuk.
+    if (!viaGateway && input.customer_id) {
+      grantLoyalty(db, input.customer_id, total);
     }
 
     return getTransactionById(id)!;
   })();
+}
+
+/** Menambah poin, total belanja, dan kunjungan pelanggan. */
+function grantLoyalty(db: Database.Database, customerId: string, total: number): void {
+  const settings = getSettings();
+  const perAmount = settings.points_per_amount > 0 ? settings.points_per_amount : 10_000;
+  db.prepare(
+    `UPDATE customers SET points = points + ?, total_spent = total_spent + ?, visit_count = visit_count + 1,
+     updated_at = datetime('now') WHERE id = ?`,
+  ).run(Math.floor(total / perAmount), total, customerId);
+}
+
+/** Mengembalikan stok seluruh item transaksi. Dipakai saat void maupun kedaluwarsa. */
+function returnStock(
+  db: Database.Database,
+  tx: TransactionWithRelations,
+  userId: string,
+  movementType: StockMovementType,
+  notes: string,
+): void {
+  for (const item of tx.items) {
+    const product = db.prepare('SELECT stock FROM products WHERE id = ?').get(item.product_id) as
+      | { stock: number }
+      | undefined;
+    // Produk yang sudah dihapus permanen tidak bisa dikembalikan stoknya,
+    // tapi pembatalan transaksinya tetap harus jalan.
+    if (!product) continue;
+    const after = product.stock + item.quantity;
+    db.prepare("UPDATE products SET stock = ?, updated_at = datetime('now') WHERE id = ?").run(after, item.product_id);
+    recordStockMovement(db, {
+      productId: item.product_id,
+      type: movementType,
+      quantity: item.quantity,
+      stockBefore: product.stock,
+      stockAfter: after,
+      notes,
+      userId,
+    });
+  }
+}
+
+// ===== SIKLUS PEMBAYARAN GATEWAY =====
+
+/** Menyimpan detail QR setelah gateway membuatkan tagihan. */
+export function attachPaymentDetails(
+  transactionId: string,
+  details: { orderId: string; qrUrl: string; expiresAt: string },
+): void {
+  getDb()
+    .prepare(
+      `UPDATE transactions SET payment_ref = ?, payment_qr_url = ?, payment_expires_at = ?,
+       payment_status = 'pending' WHERE id = ?`,
+    )
+    .run(details.orderId, details.qrUrl, details.expiresAt, transactionId);
+}
+
+/**
+ * Mencari transaksi berdasarkan order_id dari gateway.
+ *
+ * Cadangan ke invoice_no penting: order_id yang dikirim ke gateway memang nomor
+ * invoice, dan notifikasi bisa saja tiba sebelum payment_ref sempat tersimpan —
+ * atau setelah proses sempat mati di antara pembuatan QR dan penyimpanannya.
+ */
+export function getTransactionByPaymentRef(orderId: string): TransactionWithRelations | null {
+  const row = getDb()
+    .prepare('SELECT id FROM transactions WHERE payment_ref = ? OR invoice_no = ? LIMIT 1')
+    .get(orderId, orderId) as { id: string } | undefined;
+  return row ? getTransactionById(row.id) : null;
+}
+
+/** Mencatat setiap event dari gateway apa adanya, sebagai jejak audit. */
+export function recordPaymentEvent(event: {
+  transactionId: string;
+  provider: string;
+  orderId: string;
+  providerRef: string | null;
+  status: string;
+  amount: number;
+  raw: unknown;
+}): void {
+  getDb()
+    .prepare(
+      `INSERT INTO payments (id, transaction_id, provider, order_id, provider_ref, status, amount, raw)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      randomUUID(),
+      event.transactionId,
+      event.provider,
+      event.orderId,
+      event.providerRef,
+      event.status,
+      event.amount,
+      JSON.stringify(event.raw),
+    );
+}
+
+/**
+ * Menandai transaksi lunas.
+ *
+ * Aman dipanggil berkali-kali: webhook gateway bisa dikirim ulang, dan layar
+ * kasir juga memeriksa status secara berkala. Pemanggilan kedua tidak menambah
+ * poin pelanggan untuk kedua kalinya.
+ */
+export function markTransactionPaid(transactionId: string, providerRef: string | null): TransactionWithRelations {
+  const db = getDb();
+  return db.transaction(() => {
+    const tx = getTransactionById(transactionId);
+    if (!tx) throw notFound('Transaksi tidak ditemukan');
+    if (tx.payment_status === 'paid') return tx;
+    if (tx.status === 'voided') throw conflict('Transaksi sudah dibatalkan sebelumnya');
+
+    db.prepare(
+      `UPDATE transactions SET status = 'completed', payment_status = 'paid',
+       paid_at = datetime('now'), payment_ref = COALESCE(payment_ref, ?) WHERE id = ?`,
+    ).run(providerRef, transactionId);
+
+    if (tx.customer_id) grantLoyalty(db, tx.customer_id, tx.total);
+    return getTransactionById(transactionId)!;
+  })();
+}
+
+/** Pembayaran gagal atau kedaluwarsa: stok dikembalikan karena barang tidak jadi terjual. */
+export function failTransaction(
+  transactionId: string,
+  paymentStatus: 'expired' | 'failed',
+  reason: string,
+): TransactionWithRelations {
+  const db = getDb();
+  return db.transaction(() => {
+    const tx = getTransactionById(transactionId);
+    if (!tx) throw notFound('Transaksi tidak ditemukan');
+    if (tx.payment_status === 'paid') throw conflict('Transaksi sudah lunas, tidak bisa ditandai gagal');
+    if (tx.status !== 'pending') return tx;
+
+    db.prepare(
+      "UPDATE transactions SET status = 'expired', payment_status = ?, void_reason = ? WHERE id = ?",
+    ).run(paymentStatus, reason, transactionId);
+
+    returnStock(db, tx, tx.user_id, 'void', `Pembayaran batal ${tx.invoice_no}`);
+    return getTransactionById(transactionId)!;
+  })();
+}
+
+/**
+ * Menutup transaksi pending yang sudah lewat batas waktu.
+ * Dipanggil sebelum daftar transaksi dibaca, jadi tidak perlu penjadwal terpisah.
+ */
+export function expireStalePayments(): number {
+  const db = getDb();
+  const stale = db
+    .prepare(
+      `SELECT id FROM transactions
+       WHERE status = 'pending' AND payment_expires_at IS NOT NULL AND payment_expires_at < datetime('now')`,
+    )
+    .all() as { id: string }[];
+
+  for (const row of stale) {
+    try {
+      failTransaction(row.id, 'expired', 'Melewati batas waktu pembayaran');
+    } catch (error) {
+      console.error('[payments] gagal menutup transaksi kedaluwarsa', row.id, error);
+    }
+  }
+  return stale.length;
 }
 
 function formatShortfall(amount: number): string {
@@ -1122,6 +1333,11 @@ export function listTransactions(params: {
   offset: number;
 }): Paginated<TransactionWithRelations> {
   const db = getDb();
+  // Tutup dulu transaksi yang QR-nya sudah lewat batas waktu, supaya daftar
+  // tidak menampilkan "menunggu bayar" yang sebenarnya sudah mati. Ini menghindari
+  // kebutuhan penjadwal terpisah pada aplikasi satu proses seperti ini.
+  expireStalePayments();
+
   const where: string[] = ['1=1'];
   const values: unknown[] = [];
 
@@ -1209,32 +1425,16 @@ export function voidTransaction(id: string, userId: string, reason: string): Tra
     const tx = getTransactionById(id);
     if (!tx) throw notFound('Transaksi tidak ditemukan');
     if (tx.status === 'voided') throw conflict('Transaksi ini sudah dibatalkan sebelumnya');
+    if (tx.status === 'expired') throw conflict('Transaksi ini sudah kedaluwarsa dan stoknya sudah dikembalikan');
 
     db.prepare(
       "UPDATE transactions SET status = 'voided', voided_at = datetime('now'), voided_by = ?, void_reason = ? WHERE id = ?",
     ).run(userId, reason, id);
 
-    for (const item of tx.items) {
-      const product = db.prepare('SELECT stock FROM products WHERE id = ?').get(item.product_id) as
-        | { stock: number }
-        | undefined;
-      // Produk yang sudah dihapus permanen tidak bisa dikembalikan stoknya,
-      // tapi pembatalan transaksinya tetap harus jalan.
-      if (!product) continue;
-      const after = product.stock + item.quantity;
-      db.prepare("UPDATE products SET stock = ?, updated_at = datetime('now') WHERE id = ?").run(after, item.product_id);
-      recordStockMovement(db, {
-        productId: item.product_id,
-        type: 'void',
-        quantity: item.quantity,
-        stockBefore: product.stock,
-        stockAfter: after,
-        notes: `Pembatalan ${tx.invoice_no}`,
-        userId,
-      });
-    }
+    returnStock(db, tx, userId, 'void', `Pembatalan ${tx.invoice_no}`);
 
-    if (tx.customer_id) {
+    // Poin hanya pernah diberikan kalau transaksinya sudah lunas.
+    if (tx.customer_id && tx.payment_status === 'paid') {
       const settings = getSettings();
       const perAmount = settings.points_per_amount > 0 ? settings.points_per_amount : 10_000;
       const points = Math.floor(tx.total / perAmount);

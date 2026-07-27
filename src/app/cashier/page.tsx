@@ -9,6 +9,7 @@ import { useToast } from '@/components/ui/Toast';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Receipt from '@/components/Receipt';
+import QrisPaymentDialog from '@/components/QrisPaymentDialog';
 import { TextField } from '@/components/ui/Field';
 import { EmptyState, PageLoader } from '@/components/ui/States';
 import type { Customer, DiscountType, Paginated, Product, TransactionWithRelations } from '@/lib/types';
@@ -22,7 +23,8 @@ interface CartLine {
 
 const PAYMENT_OPTIONS = [
   { key: 'cash', label: 'Tunai', icon: '💵' },
-  { key: 'qris', label: 'QRIS', icon: '📱' },
+  // Diproses gateway: dana dikonfirmasi otomatis sebelum transaksi dianggap sah.
+  { key: 'qris_online', label: 'QRIS', icon: '📱' },
   { key: 'transfer', label: 'Transfer', icon: '🏦' },
   { key: 'debit', label: 'Debit', icon: '💳' },
 ] as const;
@@ -60,6 +62,7 @@ export default function CashierPage() {
 
   const [processing, setProcessing] = useState(false);
   const [receipt, setReceipt] = useState<TransactionWithRelations | null>(null);
+  const [awaitingPayment, setAwaitingPayment] = useState<TransactionWithRelations | null>(null);
   const [cartOpenMobile, setCartOpenMobile] = useState(false);
   const [newCustomerOpen, setNewCustomerOpen] = useState(false);
 
@@ -192,7 +195,7 @@ export default function CashierPage() {
     if (!canPay) return;
     setProcessing(true);
     try {
-      const transaction = await api.post<TransactionWithRelations>('/api/transactions', {
+      const created = await api.post<TransactionWithRelations>('/api/transactions', {
         items: cart.map((line) => ({
           product_id: line.productId,
           quantity: line.quantity,
@@ -209,11 +212,18 @@ export default function CashierPage() {
         amount_paid: paymentMethod === 'cash' ? paid : total,
         notes,
       });
-      setReceipt(transaction);
       resetCart();
       setCartOpenMobile(false);
       reloadProducts();
-      toast.success(`Transaksi ${transaction.invoice_no} berhasil`);
+
+      // Transaksi QRIS belum lunas — tampilkan QR dan tunggu konfirmasi gateway.
+      // Struk baru dicetak setelah dana benar-benar masuk.
+      if (created.status === 'pending') {
+        setAwaitingPayment(created);
+      } else {
+        setReceipt(created);
+        toast.success(`Transaksi ${created.invoice_no} berhasil`);
+      }
     } catch (error) {
       toast.error(errorMessage(error));
       // Stok bisa saja berubah karena kasir lain; segarkan supaya angkanya benar.
@@ -253,6 +263,20 @@ export default function CashierPage() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [handlePay, paid, total, paymentMethod, receipt]);
+
+  // Di-memo karena dipakai sebagai dependensi interval pemantau pembayaran;
+  // fungsi baru tiap render akan terus me-reset intervalnya.
+  const handlePaymentSettled = useCallback(
+    (paid: TransactionWithRelations) => {
+      setAwaitingPayment(null);
+      setReceipt(paid);
+      reloadProducts();
+      toast.success(`Pembayaran ${paid.invoice_no} diterima`);
+    },
+    [reloadProducts, toast],
+  );
+
+  const closePaymentDialog = useCallback(() => setAwaitingPayment(null), []);
 
   async function createCustomer(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -698,6 +722,8 @@ export default function CashierPage() {
       >
         {receipt && <Receipt transaction={receipt} settings={settings} tzOffset={tzOffset} />}
       </Modal>
+
+      <QrisPaymentDialog transaction={awaitingPayment} onPaid={handlePaymentSettled} onClose={closePaymentDialog} />
 
       <Modal
         open={newCustomerOpen}

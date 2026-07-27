@@ -14,15 +14,21 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Pagination from '@/components/ui/Pagination';
 import Receipt from '@/components/Receipt';
 import { EmptyState, ErrorState, TableSkeleton } from '@/components/ui/States';
-import type { TransactionStatus, TransactionWithRelations } from '@/lib/types';
+import {
+  PAYMENT_METHOD_LABELS,
+  TRANSACTION_STATUSES,
+  TRANSACTION_STATUS_LABELS,
+  type TransactionStatus,
+  type TransactionWithRelations,
+} from '@/lib/types';
 
 const PAGE_SIZE = 20;
 
-const PAYMENT_LABELS: Record<string, string> = {
-  cash: 'Tunai',
-  qris: 'QRIS',
-  transfer: 'Transfer',
-  debit: 'Debit',
+const STATUS_BADGE: Record<string, string> = {
+  pending: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+  completed: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+  voided: 'bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-300',
+  expired: 'bg-slate-100 text-slate-600 dark:bg-slate-500/20 dark:text-slate-300',
 };
 
 export default function TransactionsPage() {
@@ -124,12 +130,12 @@ export default function TransactionsPage() {
       formatDateTime(t.created_at, tzOffset),
       t.user_name,
       t.customer_name ?? 'Umum',
-      PAYMENT_LABELS[t.payment_method] ?? t.payment_method,
+      PAYMENT_METHOD_LABELS[t.payment_method] ?? t.payment_method,
       t.subtotal,
       t.discount_amount,
       t.tax_amount,
       t.total,
-      t.status === 'voided' ? 'Dibatalkan' : 'Selesai',
+      TRANSACTION_STATUS_LABELS[t.status] ?? t.status,
     ]);
     downloadCsv(`transaksi-${todayInStore(tzOffset)}.csv`, [header, ...rows]);
     toast.success('CSV halaman ini diunduh');
@@ -167,8 +173,11 @@ export default function TransactionsPage() {
               className="rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500"
             >
               <option value="">Semua Status</option>
-              <option value="completed">Selesai</option>
-              <option value="voided">Dibatalkan</option>
+              {TRANSACTION_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {TRANSACTION_STATUS_LABELS[s]}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -251,7 +260,11 @@ export default function TransactionsPage() {
                     <tr
                       key={transaction.id}
                       className={`transition-colors hover:bg-surface-2 ${
-                        transaction.status === 'voided' ? 'bg-red-50/30' : ''
+                        transaction.status === 'voided' || transaction.status === 'expired'
+                          ? 'bg-red-50/30 dark:bg-red-500/5'
+                          : transaction.status === 'pending'
+                            ? 'bg-amber-50/40 dark:bg-amber-500/5'
+                            : ''
                       }`}
                     >
                       <td className="px-4 py-3">
@@ -262,9 +275,11 @@ export default function TransactionsPage() {
                         >
                           {transaction.invoice_no}
                         </button>
-                        {transaction.status === 'voided' && (
-                          <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-red-700 dark:text-red-300">
-                            Batal
+                        {transaction.status !== 'completed' && (
+                          <span
+                            className={`ml-2 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${STATUS_BADGE[transaction.status]}`}
+                          >
+                            {TRANSACTION_STATUS_LABELS[transaction.status]}
                           </span>
                         )}
                       </td>
@@ -278,7 +293,7 @@ export default function TransactionsPage() {
                         {transaction.items?.length ?? 0}
                       </td>
                       <td className="px-4 py-3 text-ink-muted">
-                        {PAYMENT_LABELS[transaction.payment_method] ?? transaction.payment_method}
+                        {PAYMENT_METHOD_LABELS[transaction.payment_method] ?? transaction.payment_method}
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-ink">
                         {formatRupiah(transaction.total)}
@@ -359,7 +374,7 @@ export default function TransactionsPage() {
               <Info label="Waktu" value={formatDateTime(detail.created_at, tzOffset)} />
               <Info label="Kasir" value={detail.user_name} />
               <Info label="Pelanggan" value={detail.customer_name ?? 'Umum'} />
-              <Info label="Metode Bayar" value={PAYMENT_LABELS[detail.payment_method] ?? detail.payment_method} />
+              <Info label="Metode Bayar" value={PAYMENT_METHOD_LABELS[detail.payment_method] ?? detail.payment_method} />
             </div>
 
             <div className="overflow-x-auto rounded-xl border border-line">
