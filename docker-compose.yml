@@ -1,0 +1,23 @@
+services:
+  kasir-app:
+    build: .
+    container_name: kasir-app
+    restart: unless-stopped
+    # Hanya diikat ke localhost: yang menghadap internet adalah nginx, bukan
+    # container ini. Port 3021 dipilih agar tidak bentrok dengan proyek lain
+    # di VPS yang sama — sesuaikan bila perlu.
+    ports:
+      - '127.0.0.1:3021:3000'
+    env_file:
+      - .env.production
+    volumes:
+      # Database hidup di volume, jadi selamat saat container dibangun ulang.
+      - kasir-data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+volumes:
+  kasir-data:

@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+.env
+.env.*
+!.env.example
+*.db
+*.db-shm
+*.db-wal
+*.db.backup
+*.db.before-restore-*
+dev.log
+*.tmp
+README.md

@@ -1,23 +1,28 @@
-import { NextRequest } from 'next/server';
-import { getSupplierById, updateSupplier, deleteSupplier } from '@/lib/db';
+import { requireAdmin } from '@/lib/auth';
+import { deleteSupplier, getSupplierById, updateSupplier } from '@/lib/db';
+import { json, notFound, readBody, route } from '@/lib/http';
+import { supplierSchema } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const GET = route(async (_request, { params }) => {
+  await requireAdmin();
   const { id } = await params;
-  const s = getSupplierById(id);
-  if (!s) return Response.json({ error: 'Not found' }, { status: 404 });
-  return Response.json(s);
-}
+  const supplier = getSupplierById(id);
+  if (!supplier) throw notFound('Supplier tidak ditemukan');
+  return json(supplier);
+});
 
-export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const PUT = route(async (request, { params }) => {
+  await requireAdmin();
   const { id } = await params;
-  const body = await request.json();
-  return Response.json(updateSupplier(id, body));
-}
+  return json(updateSupplier(id, await readBody(request, supplierSchema)));
+});
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const DELETE = route(async (_request, { params }) => {
+  await requireAdmin();
   const { id } = await params;
   deleteSupplier(id);
-  return Response.json({ success: true });
-}
+  return json({ success: true });
+});

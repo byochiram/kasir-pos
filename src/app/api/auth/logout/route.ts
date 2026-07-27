@@ -1,7 +1,10 @@
+import { buildLogoutCookie } from '@/lib/auth';
+import { json, route } from '@/lib/http';
+
 export const dynamic = 'force-dynamic';
 
-export async function POST() {
-  const res = Response.json({ success: true });
-  res.headers.set('Set-Cookie', 'token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
-  return res;
-}
+export const POST = route(async () => {
+  const response = json({ success: true });
+  response.headers.set('Set-Cookie', buildLogoutCookie());
+  return response;
+});

@@ -1,35 +1,29 @@
-import { NextRequest } from 'next/server';
-import { getProductById, updateProduct, deleteProduct } from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { requireAdmin, requireAuth } from '@/lib/auth';
+import { deleteProduct, getProductById, updateProduct } from '@/lib/db';
+import { json, notFound, readBody, route } from '@/lib/http';
+import { productSchema } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const GET = route(async (_request, { params }) => {
+  await requireAuth();
   const { id } = await params;
   const product = getProductById(id);
-  if (!product) return Response.json({ error: 'Not found' }, { status: 404 });
-  return Response.json(product);
-}
+  if (!product) throw notFound('Produk tidak ditemukan');
+  return json(product);
+});
 
-export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    await requireAuth();
-    const { id } = await params;
-    const body = await request.json();
-    const product = updateProduct(id, body);
-    return Response.json(product);
-  } catch (error: any) {
-    return Response.json({ error: error.message }, { status: 400 });
-  }
-}
+export const PUT = route(async (request, { params }) => {
+  const session = await requireAdmin();
+  const { id } = await params;
+  const data = await readBody(request, productSchema);
+  return json(updateProduct(id, data, session.id));
+});
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    await requireAuth();
-    const { id } = await params;
-    deleteProduct(id);
-    return Response.json({ success: true });
-  } catch (error: any) {
-    return Response.json({ error: error.message }, { status: 400 });
-  }
-}
+export const DELETE = route(async (_request, { params }) => {
+  await requireAdmin();
+  const { id } = await params;
+  deleteProduct(id);
+  return json({ success: true });
+});

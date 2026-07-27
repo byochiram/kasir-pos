@@ -1,10 +1,13 @@
+import { requireAuth } from '@/lib/auth';
 import { getDashboardStats } from '@/lib/db';
-import { getSession } from '@/lib/auth';
+import { json, route } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
-export async function GET() {
-  const session = await getSession();
-  const stats = getDashboardStats(session?.id, session?.role);
-  return Response.json(stats);
-}
+export const GET = route(async () => {
+  const session = await requireAuth();
+  // Statistik dibatasi sesuai role di dalam getDashboardStats: kasir hanya
+  // melihat transaksinya sendiri dan tidak melihat angka laba/modal.
+  return json(getDashboardStats(session.id, session.role));
+});

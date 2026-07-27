@@ -1,9 +1,14 @@
-import { getSession } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
+import { getUserById } from '@/lib/db';
+import { json, route, unauthorized } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
-export async function GET() {
-  const session = await getSession();
-  if (!session) return Response.json({ error: 'Not authenticated' }, { status: 401 });
-  return Response.json({ user: session });
-}
+export const GET = route(async () => {
+  const session = await requireAuth();
+  // Token bisa saja masih berlaku setelah user dinonaktifkan atau dihapus.
+  const user = getUserById(session.id);
+  if (!user || user.is_active !== 1) throw unauthorized('Akun Anda sudah tidak aktif');
+  return json({ id: user.id, name: user.name, email: user.email, role: user.role });
+});

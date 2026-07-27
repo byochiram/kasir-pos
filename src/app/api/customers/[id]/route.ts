@@ -1,23 +1,28 @@
-import { NextRequest } from 'next/server';
-import { getCustomerById, updateCustomer, deleteCustomer } from '@/lib/db';
+import { requireAdmin, requireAuth } from '@/lib/auth';
+import { deleteCustomer, getCustomerById, updateCustomer } from '@/lib/db';
+import { json, notFound, readBody, route } from '@/lib/http';
+import { customerSchema } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const GET = route(async (_request, { params }) => {
+  await requireAuth();
   const { id } = await params;
-  const c = getCustomerById(id);
-  if (!c) return Response.json({ error: 'Not found' }, { status: 404 });
-  return Response.json(c);
-}
+  const customer = getCustomerById(id);
+  if (!customer) throw notFound('Pelanggan tidak ditemukan');
+  return json(customer);
+});
 
-export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const PUT = route(async (request, { params }) => {
+  await requireAuth();
   const { id } = await params;
-  const body = await request.json();
-  return Response.json(updateCustomer(id, body));
-}
+  return json(updateCustomer(id, await readBody(request, customerSchema)));
+});
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const DELETE = route(async (_request, { params }) => {
+  await requireAdmin();
   const { id } = await params;
   deleteCustomer(id);
-  return Response.json({ success: true });
-}
+  return json({ success: true });
+});
