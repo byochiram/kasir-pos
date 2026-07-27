@@ -81,20 +81,26 @@ interface ChargeResponse {
 }
 
 async function callApi<T>(path: string, init: RequestInit): Promise<T> {
+  // Dihitung di luar try: kalau server key belum diisi, pesannya harus tetap
+  // "belum dikonfigurasi", bukan tertelan jadi "tidak bisa menghubungi gateway".
+  const authorization = authHeader();
+  const url = `${baseUrl()}${path}`;
+
   let response: Response;
   try {
-    response = await fetch(`${baseUrl()}${path}`, {
+    response = await fetch(url, {
       ...init,
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
-        Authorization: authHeader(),
+        Authorization: authorization,
         ...(init.headers ?? {}),
       },
       // Jangan biarkan kasir menunggu tanpa batas kalau gateway lambat.
       signal: AbortSignal.timeout(15_000),
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     if (error instanceof DOMException && error.name === 'TimeoutError') {
       throw new AppError('Payment gateway tidak merespons. Coba lagi.', 504, 'PAYMENT_TIMEOUT');
     }
