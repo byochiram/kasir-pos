@@ -15,6 +15,15 @@ const PRODUCTION_BASE = 'https://api.midtrans.com';
 /** Berapa lama QR berlaku. Midtrans membatasi maksimal 120 menit untuk QRIS. */
 export const QRIS_EXPIRY_MINUTES = 15;
 
+/**
+ * Penerbit QRIS. Midtrans mendukung "gopay" dan "airpay shopee"; tidak semua
+ * akun diaktifkan untuk keduanya, jadi bisa diganti lewat environment tanpa
+ * mengubah kode.
+ */
+function acquirer(): string {
+  return process.env.MIDTRANS_QRIS_ACQUIRER?.trim() || 'gopay';
+}
+
 export function isMidtransConfigured(): boolean {
   return Boolean(process.env.MIDTRANS_SERVER_KEY);
 }
@@ -135,7 +144,7 @@ export async function chargeQris(orderId: string, amount: number): Promise<QrisC
   const body = {
     payment_type: 'qris',
     transaction_details: { order_id: orderId, gross_amount: amount },
-    qris: { acquirer: 'gopay' },
+    qris: { acquirer: acquirer() },
     custom_expiry: { unit: 'minute', expiry_duration: QRIS_EXPIRY_MINUTES },
   };
 
@@ -198,6 +207,9 @@ async function recoverExistingQris(orderId: string, amount: number): Promise<Qri
   );
 
   if (!status.transaction_id) return null;
+  // Endpoint status tidak menyebut acquirer, sedangkan pola URL QR berbeda
+  // antar acquirer, jadi disusun mengikuti konfigurasi yang sedang dipakai.
+  const path = acquirer() === 'airpay shopee' ? 'qris/shopeepay' : 'qris';
   // Hanya tagihan yang masih menunggu bayar yang layak dipakai ulang.
   if (mapStatus(status.transaction_status ?? '', status.fraud_status) !== 'pending') return null;
   // Nominalnya wajib sama; kalau beda, ini order_id milik tagihan lain.
@@ -206,7 +218,7 @@ async function recoverExistingQris(orderId: string, amount: number): Promise<Qri
   return {
     orderId,
     providerRef: status.transaction_id,
-    qrUrl: `${baseUrl()}/v2/qris/${status.transaction_id}/qr-code`,
+    qrUrl: `${baseUrl()}/v2/${path}/${status.transaction_id}/qr-code`,
     expiresAt: toUtcTimestamp(status.expiry_time),
     raw: status,
   };
