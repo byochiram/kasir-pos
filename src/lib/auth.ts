@@ -1,54 +1,18 @@
-import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
-import { ROLES, type Role, type SessionPayload } from './types';
+import type { Role, SessionPayload } from './types';
 import { forbidden, unauthorized } from './http';
+import { TOKEN_COOKIE, verifyToken } from './session';
 
-export const TOKEN_COOKIE = 'token';
-const TOKEN_MAX_AGE_SECONDS = 60 * 60 * 12; // 12 jam — satu shift kerja
-
-let cachedSecret: Uint8Array | null = null;
-
-function getSecret(): Uint8Array {
-  if (cachedSecret) return cachedSecret;
-  const secret = process.env.JWT_SECRET;
-  if (!secret || secret.length < 32) {
-    throw new Error(
-      'JWT_SECRET belum diatur atau terlalu pendek (minimal 32 karakter). Tambahkan di file .env — lihat .env.example.',
-    );
-  }
-  cachedSecret = new TextEncoder().encode(secret);
-  return cachedSecret;
-}
-
-function isRole(value: unknown): value is Role {
-  return typeof value === 'string' && (ROLES as readonly string[]).includes(value);
-}
-
-export async function signToken(payload: SessionPayload): Promise<string> {
-  return new SignJWT({ ...payload })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt()
-    .setExpirationTime(`${TOKEN_MAX_AGE_SECONDS}s`)
-    .sign(getSecret());
-}
-
-/** Mengembalikan null untuk token tidak valid/kedaluwarsa — bukan melempar. */
-export async function verifyToken(token: string): Promise<SessionPayload | null> {
-  try {
-    const { payload } = await jwtVerify(token, getSecret());
-    if (
-      typeof payload.id !== 'string' ||
-      typeof payload.name !== 'string' ||
-      typeof payload.email !== 'string' ||
-      !isRole(payload.role)
-    ) {
-      return null;
-    }
-    return { id: payload.id, name: payload.name, email: payload.email, role: payload.role };
-  } catch {
-    return null;
-  }
-}
+// Penanganan token ada di session.ts agar middleware bisa memakainya tanpa ikut
+// menarik zod lewat http.ts. Diekspor ulang di sini supaya pemanggil lama tetap
+// bisa mengimpor dari satu tempat.
+export {
+  TOKEN_COOKIE,
+  signToken,
+  verifyToken,
+  buildSessionCookie,
+  buildLogoutCookie,
+} from './session';
 
 export async function getSession(): Promise<SessionPayload | null> {
   const token = (await cookies()).get(TOKEN_COOKIE)?.value;
@@ -69,24 +33,6 @@ export async function requireRole(roles: readonly Role[]): Promise<SessionPayloa
 }
 
 export const requireAdmin = () => requireRole(['ADMIN']);
-
-export function buildSessionCookie(token: string): string {
-  const parts = [
-    `${TOKEN_COOKIE}=${token}`,
-    'Path=/',
-    'HttpOnly',
-    'SameSite=Lax',
-    `Max-Age=${TOKEN_MAX_AGE_SECONDS}`,
-  ];
-  if (process.env.NODE_ENV === 'production') parts.push('Secure');
-  return parts.join('; ');
-}
-
-export function buildLogoutCookie(): string {
-  const parts = [`${TOKEN_COOKIE}=`, 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=0'];
-  if (process.env.NODE_ENV === 'production') parts.push('Secure');
-  return parts.join('; ');
-}
 
 // ===== RATE LIMIT LOGIN =====
 // Penyimpanan in-memory: cukup untuk deployment satu proses (toko tunggal).

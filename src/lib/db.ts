@@ -381,6 +381,20 @@ const migrations: { version: number; up: (db: Database.Database) => void }[] = [
       db.exec('CREATE INDEX IF NOT EXISTS idx_transactions_reference ON transactions(payment_reference)');
     },
   },
+  {
+    // Indeks gabungan untuk daftar yang selalu memfilter baris terhapus lalu
+    // mengurutkan per nama. Tanpa ini SQLite membangun B-tree sementara untuk
+    // ORDER BY di setiap pemuatan halaman.
+    version: 7,
+    up: (db) => {
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_products_active_name ON products(deleted_at, name);
+        CREATE INDEX IF NOT EXISTS idx_customers_active_name ON customers(deleted_at, name);
+        CREATE INDEX IF NOT EXISTS idx_suppliers_active_name ON suppliers(deleted_at, name);
+        CREATE INDEX IF NOT EXISTS idx_users_active_name ON users(deleted_at, name);
+      `);
+    },
+  },
 ];
 
 /**

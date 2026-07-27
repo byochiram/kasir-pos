@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken, TOKEN_COOKIE } from '@/lib/auth';
+// Diimpor dari session.ts, bukan auth.ts: auth.ts membawa http.ts beserta zod,
+// dan middleware berjalan di setiap request.
+import { verifyToken, TOKEN_COOKIE } from '@/lib/session';
 
 /**
  * Hanya login yang boleh diakses tanpa token. Pendaftaran mandiri sengaja tidak

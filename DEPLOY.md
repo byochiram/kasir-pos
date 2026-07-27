@@ -11,6 +11,40 @@ invocation, jadi setiap transaksi akan lenyap beberapa detik setelah tersimpan.
 Server yang selalu hidup dengan volume persisten menyelesaikan itu, sekaligus
 menyediakan alamat tetap untuk webhook pembayaran.
 
+## 0. Pastikan RAM cukup untuk proses build
+
+Aplikasi yang sudah jalan hanya memakai sekitar **90 MB**, jadi ringan. Yang berat
+adalah proses **build**-nya: `next build` plus kompilasi `better-sqlite3` bisa
+menyentuh 1 GB lebih. Di VPS 2 GB yang sudah menjalankan proyek lain, build bisa
+mati terbunuh OOM di tengah jalan.
+
+Periksa dulu sisa memori dan swap:
+
+```bash
+free -h
+```
+
+Kalau swap 0 dan sisa RAM di bawah ~1,5 GB, tambahkan swap 2 GB sekali saja:
+
+```bash
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+Swap hanya dipakai saat build; setelah container jalan, pemakaian kembali ringan.
+
+Alternatif kalau tidak mau menambah swap: build image di komputer lokal, lalu
+kirim ke VPS.
+
+```bash
+# di komputer lokal
+docker build -t kasir-app .
+docker save kasir-app | gzip | ssh user@43.157.203.219 'gunzip | docker load'
+```
+
 ## 1. Siapkan berkas
 
 ```bash
@@ -44,7 +78,25 @@ Cek port yang sedang dipakai di VPS:
 ss -tlnp | grep LISTEN
 ```
 
-## 3. Reverse proxy nginx
+## 3. Arahkan subdomain
+
+Tambahkan satu **A record** di pengelola DNS domain Anda:
+
+| Jenis | Nama    | Konten            | TTL   |
+|-------|---------|-------------------|-------|
+| A     | `kasir` | IP publik VPS     | 14400 |
+
+Kalau domainnya sudah punya A record lain yang menunjuk IP yang sama (misalnya
+untuk proyek lain di VPS itu), cukup tambahkan satu baris baru — jangan diubah
+yang lama. Pemisahan antar proyek terjadi di nginx lewat `server_name`, bukan di DNS.
+
+Tunggu propagasi lalu pastikan sudah mengarah:
+
+```bash
+dig +short kasir.domain-anda.com
+```
+
+## 4. Reverse proxy nginx
 
 Buat `/etc/nginx/sites-available/kasir`:
 
@@ -81,7 +133,7 @@ sudo certbot --nginx -d kasir.domain-anda.com
 
 Arahkan dulu A record subdomain ke IP VPS sebelum menjalankan certbot.
 
-## 4. Aktifkan pembayaran QRIS
+## 5. Aktifkan pembayaran QRIS
 
 Sandbox Midtrans tidak memerlukan verifikasi badan usaha.
 
@@ -116,7 +168,7 @@ Endpoint webhook sengaja terbuka tanpa sesi — pemanggilnya server Midtrans,
 bukan browser. Keasliannya diperiksa lewat tanda tangan SHA-512, dan notifikasi
 dengan nominal yang tidak cocok akan ditolak.
 
-## 5. Perbarui versi
+## 6. Perbarui versi
 
 ```bash
 git pull
