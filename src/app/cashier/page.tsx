@@ -14,6 +14,9 @@ import VaPaymentDialog from '@/components/VaPaymentDialog';
 import { TextField } from '@/components/ui/Field';
 import { EmptyState, PageLoader } from '@/components/ui/States';
 import {
+  MANUAL_NONCASH_METHODS,
+  PAYMENT_REFERENCE_HINTS,
+  PAYMENT_REFERENCE_LABELS,
   VA_BANKS,
   VA_BANK_LABELS,
   type Customer,
@@ -75,6 +78,7 @@ export default function CashierPage() {
   const [receipt, setReceipt] = useState<TransactionWithRelations | null>(null);
   const [awaitingPayment, setAwaitingPayment] = useState<TransactionWithRelations | null>(null);
   const [vaBank, setVaBank] = useState<VaBank>('bca');
+  const [paymentReference, setPaymentReference] = useState('');
   const [cartOpenMobile, setCartOpenMobile] = useState(false);
   const [newCustomerOpen, setNewCustomerOpen] = useState(false);
 
@@ -137,8 +141,13 @@ export default function CashierPage() {
   const itemCount = cartLines.reduce((sum, line) => sum + line.quantity, 0);
 
   const discountTooBig = discountType === 'percent' ? discountValue > 100 : discountValue > subtotal;
+  const needsReference = (MANUAL_NONCASH_METHODS as readonly string[]).includes(paymentMethod);
   const canPay =
-    cartLines.length > 0 && !discountTooBig && !processing && (paymentMethod !== 'cash' || paid >= total);
+    cartLines.length > 0 &&
+    !discountTooBig &&
+    !processing &&
+    (paymentMethod !== 'cash' || paid >= total) &&
+    (!needsReference || paymentReference.trim().length > 0);
 
   const addToCart = useCallback((product: Product) => {
     if (product.stock <= 0) return;
@@ -178,6 +187,7 @@ export default function CashierPage() {
     setDiscountInput('');
     setCustomerId('');
     setNotes('');
+    setPaymentReference('');
     setPaymentMethod('cash');
   }
 
@@ -222,6 +232,7 @@ export default function CashierPage() {
         discount_type: discountType,
         payment_method: paymentMethod,
         amount_paid: paymentMethod === 'cash' ? paid : total,
+        payment_reference: paymentReference.trim(),
         notes,
       });
       resetCart();
@@ -253,6 +264,7 @@ export default function CashierPage() {
     paid,
     total,
     notes,
+    paymentReference,
     reloadProducts,
     toast,
   ]);
@@ -547,6 +559,27 @@ export default function CashierPage() {
                 </button>
               ))}
             </div>
+
+            {/* Non-tunai manual: uangnya tidak lewat aplikasi, jadi nomor buktinya
+                wajib dicatat supaya bisa dicocokkan dengan mutasi bank. */}
+            {needsReference && (
+              <div>
+                <label htmlFor="payment-ref" className="mb-1.5 block text-xs font-medium text-ink-muted">
+                  {PAYMENT_REFERENCE_LABELS[paymentMethod]}
+                  <span className="ml-0.5 text-red-500" aria-hidden>
+                    *
+                  </span>
+                </label>
+                <input
+                  id="payment-ref"
+                  value={paymentReference}
+                  onChange={(event) => setPaymentReference(event.target.value)}
+                  maxLength={100}
+                  placeholder={PAYMENT_REFERENCE_HINTS[paymentMethod]}
+                  className="w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                />
+              </div>
+            )}
 
             {paymentMethod === 'va' && (
               <div>

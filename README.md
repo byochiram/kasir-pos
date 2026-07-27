@@ -115,11 +115,19 @@ folder aplikasi dan file itu sendiri bisa diunggah kembali bila pemulihan ternya
 | Tunai | Manual — kasir menghitung uang, ada kembalian |
 | QRIS | Gateway (Midtrans Core API) |
 | Transfer VA | Gateway — nomor Virtual Account BCA/BNI/BRI/Permata/CIMB |
-| Debit | Manual — kartu diproses mesin EDC bank, di luar aplikasi |
+| Debit | Manual + **nomor approval EDC wajib** |
+| Transfer manual, QRIS stiker | Manual + **nomor referensi wajib** |
 
 Debit sengaja tidak diintegrasikan: di toko fisik kartu diproses lewat EDC milik bank,
 perangkat terpisah yang uangnya tidak lewat Midtrans. API kartu Midtrans ditujukan untuk
 belanja online (*card-not-present*), yang justru lebih lambat dan lebih mahal untuk kasir.
+
+Sebagai gantinya, setiap metode non-tunai yang dicatat manual **wajib menyertakan nomor
+bukti** — nomor approval dari struk EDC, atau nomor referensi transfer. Aturannya dipaksakan
+di server, bukan sekadar disembunyikan di UI. Nomor itu ikut tercetak di struk, bisa dicari
+di halaman Transaksi, dan masuk ke ekspor CSV, sehingga setiap rupiah non-tunai bisa
+dicocokkan dengan mutasi rekening di akhir hari. Tanpa ini, kasir bisa menekan Bayar tanpa
+uang benar-benar masuk dan tidak ada jejak untuk menelusurinya.
 
 **Pembayaran QRIS dan Virtual Account.** Keduanya diproses lewat Midtrans Core API, bukan sekadar dicatat.
 Saat kasir menekan Bayar, transaksi dibuat berstatus `pending` — stok sudah dipotong agar

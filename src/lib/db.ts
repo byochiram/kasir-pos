@@ -373,6 +373,14 @@ const migrations: { version: number; up: (db: Database.Database) => void }[] = [
       addColumn(db, 'transactions', 'payment_va_number', 'TEXT');
     },
   },
+  {
+    // Nomor bukti untuk pembayaran non-tunai yang dicatat manual.
+    version: 6,
+    up: (db) => {
+      addColumn(db, 'transactions', 'payment_reference', "TEXT NOT NULL DEFAULT ''");
+      db.exec('CREATE INDEX IF NOT EXISTS idx_transactions_reference ON transactions(payment_reference)');
+    },
+  },
 ];
 
 /**
@@ -981,6 +989,7 @@ export interface CreateTransactionInput {
   discount_type: 'amount' | 'percent';
   payment_method: string;
   amount_paid: number;
+  payment_reference: string;
   notes: string;
 }
 
@@ -1094,8 +1103,8 @@ export function createTransaction(input: CreateTransactionInput): TransactionWit
     db.prepare(
       `INSERT INTO transactions (id, invoice_no, customer_id, user_id, subtotal, discount, discount_type,
         discount_amount, tax_rate, tax_amount, total, total_cost, payment_method, amount_paid, change, notes,
-        status, payment_status, paid_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        payment_reference, status, payment_status, paid_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       invoiceNo,
@@ -1113,6 +1122,7 @@ export function createTransaction(input: CreateTransactionInput): TransactionWit
       amountPaid,
       change,
       input.notes,
+      input.payment_reference,
       status,
       paymentStatus,
       viaGateway ? null : new Date().toISOString().slice(0, 19).replace('T', ' '),
@@ -1375,9 +1385,14 @@ export function listTransactions(params: {
     values.push(params.customerId);
   }
   if (params.search) {
-    where.push("(t.invoice_no LIKE ? ESCAPE '\\' OR c.name LIKE ? ESCAPE '\\' OR u.name LIKE ? ESCAPE '\\')");
+    // Nomor bukti dan nomor VA ikut dicari: itulah yang dipegang saat
+    // mencocokkan mutasi bank dengan transaksi.
+    where.push(
+      `(t.invoice_no LIKE ? ESCAPE '\\' OR c.name LIKE ? ESCAPE '\\' OR u.name LIKE ? ESCAPE '\\'
+        OR t.payment_reference LIKE ? ESCAPE '\\' OR t.payment_va_number LIKE ? ESCAPE '\\')`,
+    );
     const like = likeParam(params.search);
-    values.push(like, like, like);
+    values.push(like, like, like, like, like);
   }
   if (params.startDate) {
     where.push(`${localDate('t.created_at')} >= ?`);

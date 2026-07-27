@@ -108,6 +108,20 @@ export default function Receipt({ transaction, settings, tzOffset }: ReceiptProp
           <span className="text-ink-muted">Metode</span>
           <span>{PAYMENT_LABELS[transaction.payment_method] ?? transaction.payment_method}</span>
         </div>
+        {transaction.payment_va_number && (
+          <div className="flex justify-between">
+            <span className="text-ink-muted">No. VA</span>
+            <span className="font-mono">{transaction.payment_va_number}</span>
+          </div>
+        )}
+        {/* Nomor bukti ikut dicetak agar struk pelanggan dan mutasi bank
+            bisa dicocokkan tanpa membuka aplikasi. */}
+        {transaction.payment_reference && (
+          <div className="flex justify-between">
+            <span className="text-ink-muted">No. Bukti</span>
+            <span className="font-mono">{transaction.payment_reference}</span>
+          </div>
+        )}
         <div className="flex justify-between">
           <span className="text-ink-muted">Dibayar</span>
           <span>{formatRupiah(transaction.amount_paid)}</span>

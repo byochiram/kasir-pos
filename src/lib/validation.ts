@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { DISCOUNT_TYPES, PAYMENT_METHODS, PO_STATUSES, ROLES } from './types';
+import { DISCOUNT_TYPES, MANUAL_NONCASH_METHODS, PAYMENT_METHODS, PO_STATUSES, ROLES } from './types';
 
 /** Rupiah selalu bilangan bulat non-negatif — tidak ada sen di aplikasi ini. */
 const money = z.number().int('Harus bilangan bulat').min(0, 'Tidak boleh negatif').max(999_999_999_999);
@@ -156,13 +156,23 @@ export const createTransactionSchema = z
     discount_type: z.enum(DISCOUNT_TYPES).default('amount'),
     payment_method: z.enum(PAYMENT_METHODS, { message: 'Metode pembayaran tidak valid' }),
     amount_paid: numeric.pipe(money),
+    payment_reference: z.string().trim().max(100, 'Maksimal 100 karakter').default(''),
     notes: longText,
   })
   // tax_rate sengaja TIDAK diterima dari client — selalu diambil dari settings server.
   .refine((d) => d.discount_type !== 'percent' || d.discount <= 100, {
     message: 'Diskon persen tidak boleh lebih dari 100%',
     path: ['discount'],
-  });
+  })
+  // Non-tunai manual tidak diverifikasi siapa pun, jadi bukti pembayarannya
+  // wajib dicatat agar bisa dicocokkan dengan mutasi bank di akhir hari.
+  .refine(
+    (d) => !MANUAL_NONCASH_METHODS.includes(d.payment_method) || d.payment_reference.length > 0,
+    {
+      message: 'Nomor bukti pembayaran wajib diisi untuk metode non-tunai manual',
+      path: ['payment_reference'],
+    },
+  );
 
 export const voidTransactionSchema = z.object({
   reason: z.string({ error: 'Alasan pembatalan wajib diisi' }).trim().min(1, 'Alasan pembatalan wajib diisi').max(500),

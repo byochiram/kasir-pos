@@ -124,13 +124,14 @@ export default function TransactionsPage() {
   }
 
   function exportCsv() {
-    const header = ['Invoice', 'Waktu', 'Kasir', 'Pelanggan', 'Metode', 'Subtotal', 'Diskon', 'Pajak', 'Total', 'Status'];
+    const header = ['Invoice','Waktu','Kasir','Pelanggan','Metode','No. Bukti','Subtotal','Diskon','Pajak','Total','Status'];
     const rows = items.map((t) => [
       t.invoice_no,
       formatDateTime(t.created_at, tzOffset),
       t.user_name,
       t.customer_name ?? 'Umum',
       PAYMENT_METHOD_LABELS[t.payment_method] ?? t.payment_method,
+      t.payment_reference || t.payment_va_number || '',
       t.subtotal,
       t.discount_amount,
       t.tax_amount,
@@ -162,7 +163,7 @@ export default function TransactionsPage() {
               type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Cari no. invoice, pelanggan, atau kasir..."
+              placeholder="Cari invoice, pelanggan, kasir, atau no. bukti..."
               aria-label="Cari transaksi"
               className="min-w-0 flex-1 rounded-xl border border-line px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
             />
@@ -375,6 +376,13 @@ export default function TransactionsPage() {
               <Info label="Kasir" value={detail.user_name} />
               <Info label="Pelanggan" value={detail.customer_name ?? 'Umum'} />
               <Info label="Metode Bayar" value={PAYMENT_METHOD_LABELS[detail.payment_method] ?? detail.payment_method} />
+              {detail.payment_reference && <Info label="No. Bukti" value={detail.payment_reference} />}
+              {detail.payment_va_number && (
+                <Info
+                  label="Virtual Account"
+                  value={`${(detail.payment_va_bank ?? '').toUpperCase()} ${detail.payment_va_number}`}
+                />
+              )}
             </div>
 
             <div className="overflow-x-auto rounded-xl border border-line">

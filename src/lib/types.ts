@@ -19,6 +19,24 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
 /** Metode yang uangnya dikonfirmasi gateway, bukan dipercaya begitu saja. */
 export const GATEWAY_METHODS: readonly PaymentMethod[] = ['qris_online', 'va'];
 
+/**
+ * Metode non-tunai yang dicatat manual. Uangnya tidak lewat aplikasi, jadi
+ * kasir wajib mencatat nomor bukti agar bisa dicocokkan dengan mutasi bank.
+ */
+export const MANUAL_NONCASH_METHODS: readonly PaymentMethod[] = ['debit', 'transfer', 'qris'];
+
+export const PAYMENT_REFERENCE_LABELS: Partial<Record<PaymentMethod, string>> = {
+  debit: 'No. approval EDC',
+  transfer: 'No. referensi transfer',
+  qris: 'No. referensi QRIS',
+};
+
+export const PAYMENT_REFERENCE_HINTS: Partial<Record<PaymentMethod, string>> = {
+  debit: 'Tercetak di struk mesin EDC',
+  transfer: 'Nomor referensi dari bukti transfer pelanggan',
+  qris: 'Nomor referensi dari notifikasi pembayaran',
+};
+
 /** Bank yang mendukung Virtual Account lewat Midtrans Core API. */
 export const VA_BANKS = ['bca', 'bni', 'bri', 'permata', 'cimb'] as const;
 export type VaBank = (typeof VA_BANKS)[number];
@@ -161,6 +179,8 @@ export interface Transaction {
   amount_paid: number;
   change: number;
   notes: string;
+  /** Nomor bukti untuk pembayaran non-tunai yang dicatat manual. */
+  payment_reference: string;
   status: TransactionStatus;
   payment_status: PaymentStatus;
   /** order_id yang dikirim ke gateway; sama dengan invoice_no. */
