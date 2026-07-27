@@ -215,8 +215,12 @@ export default function LoginPage() {
     <div className="flex min-h-dvh">
       {/* Latar dibiarkan netral; warnanya datang dari kartu pratinjau, sehingga
           logo emerald tetap menonjol dan tidak melebur dengan bidang di belakangnya. */}
-      <div className="hidden flex-1 border-r border-line bg-surface-2 lg:flex lg:flex-col lg:justify-center lg:px-14">
-        <div>
+      <div className="relative hidden flex-1 overflow-hidden border-r border-line bg-surface-2 lg:flex lg:flex-col lg:justify-center lg:px-14">
+        {/* Scrim: lapisan gelap semi-transparan yang meredupkan latar saja.
+            Diletakkan di belakang konten agar kartu dan teks tetap tajam. */}
+        <div className="pointer-events-none absolute inset-0 bg-slate-900/[0.07] dark:bg-black/25" aria-hidden />
+
+        <div className="relative">
           <div className="mb-8 flex items-center gap-3">
             <LogoMark className="h-12 w-12" />
             <LogoWordmark className="text-2xl text-ink" />
