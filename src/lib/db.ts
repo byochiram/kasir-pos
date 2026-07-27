@@ -1212,23 +1212,6 @@ export function attachPaymentDetails(
  * invoice, dan notifikasi bisa saja tiba sebelum payment_ref sempat tersimpan —
  * atau setelah proses sempat mati di antara pembuatan QR dan penyimpanannya.
  */
-/**
- * Mengambil isi QR dari event pembayaran terakhir. Dipakai saat QR yang masih
- * berlaku ditampilkan ulang, supaya tidak perlu kolom tambahan di transactions.
- */
-export function getLastQrString(transactionId: string): string | null {
-  const row = getDb()
-    .prepare('SELECT raw FROM payments WHERE transaction_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1')
-    .get(transactionId) as { raw: string } | undefined;
-  if (!row?.raw) return null;
-  try {
-    const parsed = JSON.parse(row.raw) as { qr_string?: string };
-    return parsed.qr_string ?? null;
-  } catch {
-    return null;
-  }
-}
-
 export function getTransactionByPaymentRef(orderId: string): TransactionWithRelations | null {
   const row = getDb()
     .prepare('SELECT id FROM transactions WHERE payment_ref = ? OR invoice_no = ? LIMIT 1')
