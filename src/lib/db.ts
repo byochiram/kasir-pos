@@ -14,6 +14,9 @@ import type {
   PaymentBreakdown,
   Product,
   PublicUser,
+  PurchaseOrderItem,
+  PurchaseOrderStatus,
+  PurchaseOrderWithRelations,
   Role,
   SalesReport,
   Settings,
@@ -26,6 +29,7 @@ import type {
   TransactionWithRelations,
   UserRow,
 } from './types';
+import { PO_STATUS_LABELS } from './types';
 
 const DB_PATH = process.env.DATABASE_PATH ?? path.join(process.cwd(), 'kasir.db');
 const BCRYPT_ROUNDS = 10;
@@ -276,6 +280,53 @@ const migrations: { version: number; up: (db: Database.Database) => void }[] = [
         CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone);
         CREATE INDEX IF NOT EXISTS idx_customers_deleted ON customers(deleted_at);
       `);
+    },
+  },
+  {
+    // Purchase order: menghubungkan supplier ke stok masuk, yang sebelumnya
+    // terputus — tabel suppliers hanya berfungsi sebagai buku alamat.
+    version: 3,
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS purchase_orders (
+          id TEXT PRIMARY KEY,
+          po_no TEXT NOT NULL UNIQUE,
+          supplier_id TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'draft',
+          order_date TEXT NOT NULL,
+          expected_date TEXT,
+          received_at TEXT,
+          received_by TEXT,
+          total INTEGER NOT NULL DEFAULT 0,
+          notes TEXT NOT NULL DEFAULT '',
+          created_by TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
+          FOREIGN KEY (created_by) REFERENCES users(id),
+          FOREIGN KEY (received_by) REFERENCES users(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS purchase_order_items (
+          id TEXT PRIMARY KEY,
+          po_id TEXT NOT NULL,
+          product_id TEXT NOT NULL,
+          product_name TEXT NOT NULL,
+          quantity INTEGER NOT NULL,
+          cost_price INTEGER NOT NULL,
+          subtotal INTEGER NOT NULL,
+          FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE CASCADE,
+          FOREIGN KEY (product_id) REFERENCES products(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_po_supplier ON purchase_orders(supplier_id);
+        CREATE INDEX IF NOT EXISTS idx_po_status ON purchase_orders(status);
+        CREATE INDEX IF NOT EXISTS idx_po_date ON purchase_orders(order_date);
+        CREATE INDEX IF NOT EXISTS idx_po_items_po ON purchase_order_items(po_id);
+      `);
+
+      // Menautkan stok masuk ke PO asalnya, untuk penelusuran.
+      addColumn(db, 'stock_history', 'po_id', 'TEXT');
     },
   },
 ];
@@ -597,13 +648,48 @@ interface StockMovement {
   notes: string;
   userId: string;
   supplierId?: string | null;
+  poId?: string | null;
 }
 
 function recordStockMovement(db: Database.Database, m: StockMovement): void {
   db.prepare(
-    `INSERT INTO stock_history (id, product_id, supplier_id, type, quantity, stock_before, stock_after, notes, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(randomUUID(), m.productId, m.supplierId ?? null, m.type, m.quantity, m.stockBefore, m.stockAfter, m.notes, m.userId);
+    `INSERT INTO stock_history (id, product_id, supplier_id, po_id, type, quantity, stock_before, stock_after, notes, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    randomUUID(),
+    m.productId,
+    m.supplierId ?? null,
+    m.poId ?? null,
+    m.type,
+    m.quantity,
+    m.stockBefore,
+    m.stockAfter,
+    m.notes,
+    m.userId,
+  );
+}
+
+/** Menambah stok satu produk. Dipakai langsung maupun oleh penerimaan purchase order. */
+function addStock(
+  db: Database.Database,
+  params: { productId: string; quantity: number; notes: string; userId: string; supplierId?: string | null; poId?: string | null },
+): Product {
+  const product = getProductById(params.productId);
+  if (!product) throw notFound('Produk tidak ditemukan');
+  const after = product.stock + params.quantity;
+  db.prepare("UPDATE products SET stock = ?, updated_at = datetime('now') WHERE id = ?").run(after, params.productId);
+  recordStockMovement(db, {
+    productId: params.productId,
+    type: 'in',
+    quantity: params.quantity,
+    stockBefore: product.stock,
+    stockAfter: after,
+    notes: params.notes,
+    userId: params.userId,
+    supplierId: params.supplierId,
+    poId: params.poId,
+  });
+  return getProductById(params.productId)!;
 }
 
 export function stockIn(
@@ -614,23 +700,7 @@ export function stockIn(
   supplierId?: string | null,
 ): Product {
   const db = getDb();
-  return db.transaction(() => {
-    const product = getProductById(productId);
-    if (!product) throw notFound('Produk tidak ditemukan');
-    const after = product.stock + quantity;
-    db.prepare("UPDATE products SET stock = ?, updated_at = datetime('now') WHERE id = ?").run(after, productId);
-    recordStockMovement(db, {
-      productId,
-      type: 'in',
-      quantity,
-      stockBefore: product.stock,
-      stockAfter: after,
-      notes,
-      userId,
-      supplierId,
-    });
-    return getProductById(productId)!;
-  })();
+  return db.transaction(() => addStock(db, { productId, quantity, notes, userId, supplierId }))();
 }
 
 /** Barang keluar non-penjualan: rusak, kedaluwarsa, hilang, atau retur ke supplier. */
@@ -1417,6 +1487,256 @@ export function changePassword(id: string, currentPassword: string, newPassword:
     bcrypt.hashSync(newPassword, BCRYPT_ROUNDS),
     id,
   );
+}
+
+// ============================================================================
+// PURCHASE ORDER
+// ============================================================================
+
+export interface PurchaseOrderItemInput {
+  product_id: string;
+  quantity: number;
+  cost_price: number;
+}
+
+export interface PurchaseOrderInput {
+  supplier_id: string;
+  order_date: string;
+  expected_date?: string | null;
+  notes: string;
+  items: PurchaseOrderItemInput[];
+}
+
+function nextPoNo(db: Database.Database): string {
+  const day = todayLocal().replace(/-/g, '');
+  const prefix = `PO-${day}-`;
+  const row = db.prepare('SELECT MAX(po_no) as last FROM purchase_orders WHERE po_no LIKE ?').get(`${prefix}%`) as {
+    last: string | null;
+  };
+  const lastSeq = row.last ? Number.parseInt(row.last.slice(prefix.length), 10) : 0;
+  return `${prefix}${String((Number.isFinite(lastSeq) ? lastSeq : 0) + 1).padStart(4, '0')}`;
+}
+
+/** Menyiapkan baris item sekaligus menghitung totalnya, dipakai saat buat & ubah. */
+function preparePoItems(items: PurchaseOrderItemInput[]) {
+  const seen = new Set<string>();
+  let total = 0;
+  const rows = items.map((item) => {
+    if (seen.has(item.product_id)) {
+      throw badRequest('Ada produk yang sama tercantum lebih dari sekali');
+    }
+    seen.add(item.product_id);
+
+    const product = getProductById(item.product_id);
+    if (!product) throw badRequest(`Produk dengan ID ${item.product_id} tidak ditemukan`);
+    const subtotal = item.cost_price * item.quantity;
+    total += subtotal;
+    return {
+      product_id: product.id,
+      product_name: product.name,
+      quantity: item.quantity,
+      cost_price: item.cost_price,
+      subtotal,
+    };
+  });
+  return { rows, total };
+}
+
+function insertPoItems(
+  db: Database.Database,
+  poId: string,
+  rows: ReturnType<typeof preparePoItems>['rows'],
+): void {
+  const stmt = db.prepare(
+    `INSERT INTO purchase_order_items (id, po_id, product_id, product_name, quantity, cost_price, subtotal)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  );
+  for (const row of rows) {
+    stmt.run(randomUUID(), poId, row.product_id, row.product_name, row.quantity, row.cost_price, row.subtotal);
+  }
+}
+
+export function listPurchaseOrders(params: {
+  status?: string;
+  supplierId?: string;
+  search?: string;
+  limit: number;
+  offset: number;
+}): Paginated<PurchaseOrderWithRelations> {
+  const db = getDb();
+  const where: string[] = ['1=1'];
+  const values: unknown[] = [];
+  if (params.status) {
+    where.push('po.status = ?');
+    values.push(params.status);
+  }
+  if (params.supplierId) {
+    where.push('po.supplier_id = ?');
+    values.push(params.supplierId);
+  }
+  if (params.search) {
+    where.push("(po.po_no LIKE ? ESCAPE '\\' OR s.name LIKE ? ESCAPE '\\')");
+    const like = likeParam(params.search);
+    values.push(like, like);
+  }
+
+  const from = `FROM purchase_orders po
+    JOIN suppliers s ON po.supplier_id = s.id
+    JOIN users u ON po.created_by = u.id
+    LEFT JOIN users r ON po.received_by = r.id
+    WHERE ${where.join(' AND ')}`;
+
+  const { total } = db.prepare(`SELECT COUNT(*) as total ${from}`).get(...values) as { total: number };
+  const rows = db
+    .prepare(
+      `SELECT po.*, s.name as supplier_name, u.name as created_by_name, r.name as received_by_name ${from}
+       ORDER BY po.order_date DESC, po.created_at DESC LIMIT ? OFFSET ?`,
+    )
+    .all(...values, params.limit, params.offset) as PurchaseOrderWithRelations[];
+
+  return { data: attachPoItems(db, rows), total, limit: params.limit, offset: params.offset };
+}
+
+function attachPoItems(
+  db: Database.Database,
+  rows: PurchaseOrderWithRelations[],
+): PurchaseOrderWithRelations[] {
+  if (rows.length === 0) return rows;
+  const placeholders = rows.map(() => '?').join(',');
+  const items = db
+    .prepare(`SELECT * FROM purchase_order_items WHERE po_id IN (${placeholders}) ORDER BY rowid`)
+    .all(...rows.map((row) => row.id)) as PurchaseOrderItem[];
+
+  const byPo = new Map<string, PurchaseOrderItem[]>();
+  for (const item of items) {
+    const list = byPo.get(item.po_id);
+    if (list) list.push(item);
+    else byPo.set(item.po_id, [item]);
+  }
+  for (const row of rows) row.items = byPo.get(row.id) ?? [];
+  return rows;
+}
+
+export function getPurchaseOrderById(id: string): PurchaseOrderWithRelations | null {
+  const db = getDb();
+  const row = db
+    .prepare(
+      `SELECT po.*, s.name as supplier_name, u.name as created_by_name, r.name as received_by_name
+       FROM purchase_orders po
+       JOIN suppliers s ON po.supplier_id = s.id
+       JOIN users u ON po.created_by = u.id
+       LEFT JOIN users r ON po.received_by = r.id
+       WHERE po.id = ?`,
+    )
+    .get(id) as PurchaseOrderWithRelations | undefined;
+  if (!row) return null;
+  return attachPoItems(db, [row])[0];
+}
+
+export function createPurchaseOrder(input: PurchaseOrderInput, userId: string): PurchaseOrderWithRelations {
+  const db = getDb();
+  return db.transaction(() => {
+    if (!getSupplierById(input.supplier_id)) throw badRequest('Supplier tidak ditemukan');
+    const { rows, total } = preparePoItems(input.items);
+
+    const id = randomUUID();
+    db.prepare(
+      `INSERT INTO purchase_orders (id, po_no, supplier_id, status, order_date, expected_date, total, notes, created_by)
+       VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?)`,
+    ).run(id, nextPoNo(db), input.supplier_id, input.order_date, input.expected_date ?? null, total, input.notes, userId);
+
+    insertPoItems(db, id, rows);
+    return getPurchaseOrderById(id)!;
+  })();
+}
+
+export function updatePurchaseOrder(id: string, input: PurchaseOrderInput): PurchaseOrderWithRelations {
+  const db = getDb();
+  return db.transaction(() => {
+    const existing = getPurchaseOrderById(id);
+    if (!existing) throw notFound('Purchase order tidak ditemukan');
+    // Setelah dipesan atau diterima, isinya tidak boleh berubah — angka stok dan
+    // riwayat pembelian sudah terlanjur mengacu ke sini.
+    if (existing.status !== 'draft') {
+      throw conflict('Hanya PO berstatus draft yang bisa diubah');
+    }
+    if (!getSupplierById(input.supplier_id)) throw badRequest('Supplier tidak ditemukan');
+
+    const { rows, total } = preparePoItems(input.items);
+    db.prepare(
+      `UPDATE purchase_orders SET supplier_id=?, order_date=?, expected_date=?, total=?, notes=?,
+       updated_at=datetime('now') WHERE id=?`,
+    ).run(input.supplier_id, input.order_date, input.expected_date ?? null, total, input.notes, id);
+
+    db.prepare('DELETE FROM purchase_order_items WHERE po_id = ?').run(id);
+    insertPoItems(db, id, rows);
+    return getPurchaseOrderById(id)!;
+  })();
+}
+
+export function deletePurchaseOrder(id: string): void {
+  const existing = getPurchaseOrderById(id);
+  if (!existing) throw notFound('Purchase order tidak ditemukan');
+  if (existing.status !== 'draft') {
+    throw conflict('Hanya PO berstatus draft yang bisa dihapus. PO lain sebaiknya dibatalkan agar jejaknya tersimpan.');
+  }
+  getDb().prepare('DELETE FROM purchase_orders WHERE id = ?').run(id);
+}
+
+/** Transisi status yang diizinkan. Penerimaan ditangani terpisah karena mengubah stok. */
+const ALLOWED_TRANSITIONS: Record<PurchaseOrderStatus, PurchaseOrderStatus[]> = {
+  draft: ['ordered', 'cancelled'],
+  ordered: ['received', 'cancelled'],
+  received: [],
+  cancelled: [],
+};
+
+export function setPurchaseOrderStatus(
+  id: string,
+  status: PurchaseOrderStatus,
+  userId: string,
+): PurchaseOrderWithRelations {
+  const db = getDb();
+  return db.transaction(() => {
+    const po = getPurchaseOrderById(id);
+    if (!po) throw notFound('Purchase order tidak ditemukan');
+    if (!ALLOWED_TRANSITIONS[po.status].includes(status)) {
+      throw conflict(
+        `PO berstatus "${PO_STATUS_LABELS[po.status]}" tidak bisa diubah menjadi "${PO_STATUS_LABELS[status]}"`,
+      );
+    }
+
+    if (status !== 'received') {
+      db.prepare("UPDATE purchase_orders SET status = ?, updated_at = datetime('now') WHERE id = ?").run(status, id);
+      return getPurchaseOrderById(id)!;
+    }
+
+    if (po.items.length === 0) throw conflict('PO tanpa item tidak bisa diterima');
+
+    // Penerimaan barang: stok bertambah dan harga modal produk mengikuti harga
+    // beli terakhir, supaya perhitungan laba memakai angka yang aktual.
+    for (const item of po.items) {
+      addStock(db, {
+        productId: item.product_id,
+        quantity: item.quantity,
+        notes: `Penerimaan ${po.po_no} dari ${po.supplier_name}`,
+        userId,
+        supplierId: po.supplier_id,
+        poId: po.id,
+      });
+      db.prepare("UPDATE products SET cost_price = ?, updated_at = datetime('now') WHERE id = ?").run(
+        item.cost_price,
+        item.product_id,
+      );
+    }
+
+    db.prepare(
+      `UPDATE purchase_orders SET status = 'received', received_at = datetime('now'), received_by = ?,
+       updated_at = datetime('now') WHERE id = ?`,
+    ).run(userId, id);
+
+    return getPurchaseOrderById(id)!;
+  })();
 }
 
 // ============================================================================

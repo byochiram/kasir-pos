@@ -62,7 +62,7 @@ disembunyikan di sidebar hanya pelengkap, bukan pengaman.
 | Dashboard                                    | seluruh toko | shift sendiri, tanpa angka laba |
 | Kelola produk, harga, stok                   |  ✓    |  —    |
 | Batalkan (void) transaksi                    |  ✓    |  —    |
-| Supplier, pengeluaran, laporan               |  ✓    |  —    |
+| Supplier, purchase order, pengeluaran, laporan |  ✓  |  —    |
 | Kelola user & pengaturan toko                |  ✓    |  —    |
 
 Tidak ada pendaftaran mandiri: akun baru hanya bisa dibuat admin lewat halaman **Kelola User**.
@@ -85,6 +85,13 @@ penjualan pukul 01:00 WIB akan masuk ke laporan hari sebelumnya.
 dan siapa yang melakukannya — termasuk penjualan, pembatalan, stok masuk/keluar, dan stok
 opname. Mengubah angka stok lewat form produk pun otomatis tercatat sebagai penyesuaian,
 jadi tidak ada jalur mengubah stok tanpa jejak.
+
+**Purchase order.** Alur pemesanan ke supplier: `Draft → Dipesan → Diterima`, dengan
+`Dibatalkan` sebagai jalan keluar sebelum barang diterima. Isi PO hanya bisa diubah selagi
+masih draft — setelah dipesan, angkanya sudah jadi acuan. Saat ditandai **diterima**, stok
+setiap produk bertambah dan harga modalnya diperbarui mengikuti harga beli di PO, sehingga
+perhitungan laba memakai angka yang aktual. Penerimaan hanya bisa sekali, dan setiap
+penambahan stok tercatat lengkap dengan nomor PO serta supplier asalnya.
 
 **Pembatalan transaksi.** Khusus admin dan wajib menyertakan alasan. Stok dikembalikan,
 poin serta total belanja pelanggan ditarik kembali (tidak pernah sampai negatif), dan
@@ -112,6 +119,7 @@ src/
 │   ├── transactions/  Daftar transaksi, detail, void, cetak ulang struk
 │   ├── customers/     Pelanggan, poin, riwayat belanja
 │   ├── suppliers/     Supplier
+│   ├── purchase-orders/ Pemesanan barang ke supplier
 │   ├── expenses/      Pengeluaran operasional
 │   ├── reports/       Laporan penjualan & laba
 │   ├── settings/      Pengaturan toko & ganti password

@@ -14,6 +14,16 @@ export type TransactionStatus = (typeof TRANSACTION_STATUSES)[number];
 export const STOCK_MOVEMENT_TYPES = ['in', 'out', 'adjustment', 'sale', 'void'] as const;
 export type StockMovementType = (typeof STOCK_MOVEMENT_TYPES)[number];
 
+export const PO_STATUSES = ['draft', 'ordered', 'received', 'cancelled'] as const;
+export type PurchaseOrderStatus = (typeof PO_STATUSES)[number];
+
+export const PO_STATUS_LABELS: Record<PurchaseOrderStatus, string> = {
+  draft: 'Draft',
+  ordered: 'Dipesan',
+  received: 'Diterima',
+  cancelled: 'Dibatalkan',
+};
+
 export const EXPENSE_CATEGORIES = [
   'Operasional',
   'Gaji',
@@ -160,6 +170,39 @@ export interface Expense {
 
 export interface ExpenseWithRelations extends Expense {
   user_name: string;
+}
+
+export interface PurchaseOrderItem {
+  id: string;
+  po_id: string;
+  product_id: string;
+  product_name: string;
+  quantity: number;
+  cost_price: number;
+  subtotal: number;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  po_no: string;
+  supplier_id: string;
+  status: PurchaseOrderStatus;
+  order_date: string;
+  expected_date: string | null;
+  received_at: string | null;
+  received_by: string | null;
+  total: number;
+  notes: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PurchaseOrderWithRelations extends PurchaseOrder {
+  supplier_name: string;
+  created_by_name: string;
+  received_by_name: string | null;
+  items: PurchaseOrderItem[];
 }
 
 export interface Settings {

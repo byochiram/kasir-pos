@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { DISCOUNT_TYPES, PAYMENT_METHODS, ROLES } from './types';
+import { DISCOUNT_TYPES, PAYMENT_METHODS, PO_STATUSES, ROLES } from './types';
 
 /** Rupiah selalu bilangan bulat non-negatif — tidak ada sen di aplikasi ini. */
 const money = z.number().int('Harus bilangan bulat').min(0, 'Tidak boleh negatif').max(999_999_999_999);
@@ -166,6 +166,25 @@ export const createTransactionSchema = z
 
 export const voidTransactionSchema = z.object({
   reason: z.string({ error: 'Alasan pembatalan wajib diisi' }).trim().min(1, 'Alasan pembatalan wajib diisi').max(500),
+});
+
+// ===== PURCHASE ORDER =====
+const poItemSchema = z.object({
+  product_id: z.string().min(1, 'Produk wajib dipilih'),
+  quantity: numeric.pipe(positiveInt).refine((v) => v <= 100_000, 'Kuantitas maksimal 100.000'),
+  cost_price: numeric.pipe(money),
+});
+
+export const purchaseOrderSchema = z.object({
+  supplier_id: z.string().min(1, 'Supplier wajib dipilih'),
+  order_date: isoDate,
+  expected_date: z.union([z.literal(''), isoDate]).nullish(),
+  notes: longText,
+  items: z.array(poItemSchema).min(1, 'Minimal satu produk harus dipesan').max(200, 'Maksimal 200 baris item'),
+});
+
+export const purchaseOrderStatusSchema = z.object({
+  status: z.enum(PO_STATUSES, { message: 'Status tidak valid' }),
 });
 
 // ===== EXPENSES =====

@@ -6,7 +6,7 @@ import { verifyToken, TOKEN_COOKIE } from '@/lib/auth';
 const PUBLIC_PATHS = ['/login', '/api/auth/login'];
 
 /** Halaman yang hanya boleh dibuka ADMIN. API punya pengecekan sendiri di tiap route. */
-const ADMIN_PATHS = ['/users', '/settings', '/reports', '/suppliers', '/expenses'];
+const ADMIN_PATHS = ['/users', '/settings', '/reports', '/suppliers', '/expenses', '/purchase-orders'];
 
 function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
