@@ -165,19 +165,19 @@ export default function ExpensesPage() {
       />
 
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
-          <p className="text-xs uppercase tracking-wide text-slate-500">Total Periode Terpilih</p>
+        <div className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
+          <p className="text-xs uppercase tracking-wide text-ink-muted">Total Periode Terpilih</p>
           {/* Dihitung server atas seluruh hasil filter, bukan hanya baris di halaman ini. */}
-          <p className="mt-1 break-words text-2xl font-bold text-red-600">{formatRupiah(data?.sum ?? 0)}</p>
+          <p className="mt-1 break-words text-2xl font-bold text-red-600 dark:text-red-300">{formatRupiah(data?.sum ?? 0)}</p>
         </div>
-        <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
-          <p className="text-xs uppercase tracking-wide text-slate-500">Jumlah Catatan</p>
-          <p className="mt-1 text-2xl font-bold text-slate-800">{formatNumber(data?.total ?? 0)}</p>
+        <div className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
+          <p className="text-xs uppercase tracking-wide text-ink-muted">Jumlah Catatan</p>
+          <p className="mt-1 text-2xl font-bold text-ink">{formatNumber(data?.total ?? 0)}</p>
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm">
-        <div className="space-y-2 border-b border-slate-200/70 p-3">
+      <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
+        <div className="space-y-2 border-b border-line p-3">
           <div className="flex flex-col gap-2 sm:flex-row">
             <input
               type="search"
@@ -185,13 +185,13 @@ export default function ExpensesPage() {
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Cari deskripsi..."
               aria-label="Cari pengeluaran"
-              className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+              className="min-w-0 flex-1 rounded-xl border border-line px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
             />
             <select
               value={category}
               onChange={(event) => setCategory(event.target.value)}
               aria-label="Filter kategori"
-              className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500"
+              className="rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500"
             >
               <option value="">Semua Kategori</option>
               {EXPENSE_CATEGORIES.map((item) => (
@@ -207,19 +207,19 @@ export default function ExpensesPage() {
               value={startDate}
               onChange={(event) => setStartDate(event.target.value)}
               aria-label="Tanggal mulai"
-              className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-500 sm:flex-none"
+              className="min-w-0 flex-1 rounded-xl border border-line px-3 py-2 text-sm outline-none focus:border-emerald-500 sm:flex-none"
             />
-            <span className="text-sm text-slate-400">s/d</span>
+            <span className="text-sm text-ink-subtle">s/d</span>
             <input
               type="date"
               value={endDate}
               onChange={(event) => setEndDate(event.target.value)}
               aria-label="Tanggal akhir"
-              className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-500 sm:flex-none"
+              className="min-w-0 flex-1 rounded-xl border border-line px-3 py-2 text-sm outline-none focus:border-emerald-500 sm:flex-none"
             />
           </div>
           {dateInvalid && (
-            <p className="text-xs font-medium text-red-600">Tanggal mulai tidak boleh setelah tanggal akhir.</p>
+            <p className="text-xs font-medium text-red-600 dark:text-red-300">Tanggal mulai tidak boleh setelah tanggal akhir.</p>
           )}
         </div>
 
@@ -240,7 +240,7 @@ export default function ExpensesPage() {
           <>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] text-sm">
-                <thead className="bg-slate-50/70 text-left text-xs uppercase tracking-wide text-slate-500">
+                <thead className="bg-surface-2 text-left text-xs uppercase tracking-wide text-ink-muted">
                   <tr>
                     <th className="px-4 py-3 font-semibold">Tanggal</th>
                     <th className="px-4 py-3 font-semibold">Deskripsi</th>
@@ -250,21 +250,21 @@ export default function ExpensesPage() {
                     <th className="px-4 py-3 text-right font-semibold">Aksi</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-line-soft">
                   {items.map((expense) => (
-                    <tr key={expense.id} className="transition-colors hover:bg-slate-50/60">
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-500">{formatPlainDate(expense.date)}</td>
+                    <tr key={expense.id} className="transition-colors hover:bg-surface-2">
+                      <td className="whitespace-nowrap px-4 py-3 text-ink-muted">{formatPlainDate(expense.date)}</td>
                       <td className="px-4 py-3">
-                        <p className="font-medium text-slate-800">{expense.description}</p>
-                        {expense.notes && <p className="mt-0.5 text-xs text-slate-400">{expense.notes}</p>}
+                        <p className="font-medium text-ink">{expense.description}</p>
+                        {expense.notes && <p className="mt-0.5 text-xs text-ink-subtle">{expense.notes}</p>}
                       </td>
                       <td className="px-4 py-3">
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                        <span className="rounded-full bg-surface-3 px-2.5 py-1 text-xs font-medium text-ink-muted">
                           {expense.category}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-slate-500">{expense.user_name}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-red-600">
+                      <td className="px-4 py-3 text-ink-muted">{expense.user_name}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-red-600 dark:text-red-300">
                         {formatRupiah(expense.amount)}
                       </td>
                       <td className="px-4 py-3">
@@ -274,7 +274,7 @@ export default function ExpensesPage() {
                             onClick={() => openEdit(expense)}
                             title="Edit"
                             aria-label={`Edit ${expense.description}`}
-                            className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+                            className="rounded-lg p-1.5 text-ink-muted transition-colors hover:bg-surface-3 hover:text-ink"
                           >
                             ✎
                           </button>
@@ -283,7 +283,7 @@ export default function ExpensesPage() {
                             onClick={() => setDeleting(expense)}
                             title="Hapus"
                             aria-label={`Hapus ${expense.description}`}
-                            className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                            className="rounded-lg p-1.5 text-ink-subtle transition-colors hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-600 dark:hover:text-red-300"
                           >
                             🗑
                           </button>

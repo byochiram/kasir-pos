@@ -19,8 +19,8 @@ const PAGE_SIZE = 20;
 const EMPTY_FORM = { name: '', email: '', password: '', role: 'KASIR' as Role, is_active: true };
 
 const ROLE_BADGE: Record<Role, string> = {
-  ADMIN: 'bg-violet-50 text-violet-700 border-violet-200',
-  KASIR: 'bg-sky-50 text-sky-700 border-sky-200',
+  ADMIN: 'bg-violet-50 dark:bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-500/30',
+  KASIR: 'bg-sky-50 dark:bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-500/30',
 };
 
 const ROLE_HINT: Record<Role, string> = {
@@ -138,15 +138,15 @@ export default function UsersPage() {
         }
       />
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm">
-        <div className="border-b border-slate-200/70 p-3">
+      <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
+        <div className="border-b border-line p-3">
           <input
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Cari nama atau email..."
             aria-label="Cari user"
-            className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+            className="w-full rounded-xl border border-line px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
           />
         </div>
 
@@ -162,7 +162,7 @@ export default function UsersPage() {
           <>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[680px] text-sm">
-                <thead className="bg-slate-50/70 text-left text-xs uppercase tracking-wide text-slate-500">
+                <thead className="bg-surface-2 text-left text-xs uppercase tracking-wide text-ink-muted">
                   <tr>
                     <th className="px-4 py-3 font-semibold">User</th>
                     <th className="px-4 py-3 font-semibold">Role</th>
@@ -171,24 +171,24 @@ export default function UsersPage() {
                     <th className="px-4 py-3 text-right font-semibold">Aksi</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-line-soft">
                   {users.map((user) => (
-                    <tr key={user.id} className="transition-colors hover:bg-slate-50/60">
+                    <tr key={user.id} className="transition-colors hover:bg-surface-2">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-800 text-xs font-bold text-white">
                             {initials(user.name)}
                           </span>
                           <div className="min-w-0">
-                            <p className="truncate font-medium text-slate-800">
+                            <p className="truncate font-medium text-ink">
                               {user.name}
                               {user.id === currentUser?.id && (
-                                <span className="ml-2 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-emerald-700">
+                                <span className="ml-2 rounded bg-emerald-50 dark:bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300">
                                   Anda
                                 </span>
                               )}
                             </p>
-                            <p className="truncate text-xs text-slate-500">{user.email}</p>
+                            <p className="truncate text-xs text-ink-muted">{user.email}</p>
                           </div>
                         </div>
                       </td>
@@ -202,13 +202,13 @@ export default function UsersPage() {
                       <td className="px-4 py-3">
                         <span
                           className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                            user.is_active === 1 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                            user.is_active === 1 ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-surface-3 text-ink-muted'
                           }`}
                         >
                           {user.is_active === 1 ? 'Aktif' : 'Nonaktif'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-slate-500">{formatDate(user.created_at, tzOffset)}</td>
+                      <td className="px-4 py-3 text-ink-muted">{formatDate(user.created_at, tzOffset)}</td>
                       <td className="px-4 py-3">
                         <div className="flex justify-end gap-1">
                           <button
@@ -216,7 +216,7 @@ export default function UsersPage() {
                             onClick={() => openEdit(user)}
                             title="Edit"
                             aria-label={`Edit ${user.name}`}
-                            className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+                            className="rounded-lg p-1.5 text-ink-muted transition-colors hover:bg-surface-3 hover:text-ink"
                           >
                             ✎
                           </button>
@@ -232,7 +232,7 @@ export default function UsersPage() {
                                   : 'Hapus'
                             }
                             aria-label={`Hapus ${user.name}`}
-                            className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+                            className="rounded-lg p-1.5 text-ink-subtle transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-ink-subtle dark:hover:bg-red-500/15 dark:hover:text-red-300"
                           >
                             🗑
                           </button>
@@ -302,7 +302,7 @@ export default function UsersPage() {
           </SelectField>
 
           {editing && editing.id !== currentUser?.id && (
-            <label className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-slate-200 p-3 text-sm">
+            <label className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-line p-3 text-sm">
               <input
                 type="checkbox"
                 checked={form.is_active}
@@ -310,8 +310,8 @@ export default function UsersPage() {
                 className="h-4 w-4 accent-emerald-600"
               />
               <span>
-                <span className="font-medium text-slate-700">Akun aktif</span>
-                <span className="block text-xs text-slate-500">
+                <span className="font-medium text-ink">Akun aktif</span>
+                <span className="block text-xs text-ink-muted">
                   Akun nonaktif tidak bisa login, tapi riwayat transaksinya tetap tersimpan.
                 </span>
               </span>

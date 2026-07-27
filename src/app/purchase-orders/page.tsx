@@ -27,10 +27,10 @@ import {
 const PAGE_SIZE = 20;
 
 const STATUS_BADGE: Record<PurchaseOrderStatus, string> = {
-  draft: 'bg-slate-100 text-slate-600',
-  ordered: 'bg-sky-50 text-sky-700',
-  received: 'bg-emerald-50 text-emerald-700',
-  cancelled: 'bg-red-50 text-red-600',
+  draft: 'bg-surface-3 text-ink-muted',
+  ordered: 'bg-sky-50 dark:bg-sky-500/15 text-sky-700 dark:text-sky-300',
+  received: 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
+  cancelled: 'bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300',
 };
 
 interface DraftLine {
@@ -244,26 +244,26 @@ export default function PurchaseOrdersPage() {
       />
 
       {suppliers.length === 0 && (
-        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div className="mb-4 rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/15 px-4 py-3 text-sm text-amber-800 dark:text-amber-300">
           Belum ada supplier terdaftar. Tambahkan supplier dulu di halaman Supplier sebelum membuat PO.
         </div>
       )}
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm">
-        <div className="flex flex-col gap-2 border-b border-slate-200/70 p-3 sm:flex-row">
+      <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
+        <div className="flex flex-col gap-2 border-b border-line p-3 sm:flex-row">
           <input
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Cari nomor PO atau supplier..."
             aria-label="Cari purchase order"
-            className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+            className="min-w-0 flex-1 rounded-xl border border-line px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
           />
           <select
             value={status}
             onChange={(event) => setStatus(event.target.value as PurchaseOrderStatus | '')}
             aria-label="Filter status"
-            className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500"
+            className="rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500"
           >
             <option value="">Semua Status</option>
             {PO_STATUSES.map((item) => (
@@ -291,7 +291,7 @@ export default function PurchaseOrdersPage() {
           <>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[820px] text-sm">
-                <thead className="bg-slate-50/70 text-left text-xs uppercase tracking-wide text-slate-500">
+                <thead className="bg-surface-2 text-left text-xs uppercase tracking-wide text-ink-muted">
                   <tr>
                     <th className="px-4 py-3 font-semibold">No. PO</th>
                     <th className="px-4 py-3 font-semibold">Supplier</th>
@@ -303,25 +303,25 @@ export default function PurchaseOrdersPage() {
                     <th className="px-4 py-3 text-right font-semibold">Aksi</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-line-soft">
                   {items.map((po) => (
-                    <tr key={po.id} className="transition-colors hover:bg-slate-50/60">
+                    <tr key={po.id} className="transition-colors hover:bg-surface-2">
                       <td className="px-4 py-3">
                         <button
                           type="button"
                           onClick={() => setDetail(po)}
-                          className="font-mono text-xs font-semibold text-slate-700 hover:text-emerald-600 hover:underline"
+                          className="font-mono text-xs font-semibold text-ink hover:text-emerald-600 dark:hover:text-emerald-300 hover:underline"
                         >
                           {po.po_no}
                         </button>
                       </td>
-                      <td className="px-4 py-3 text-slate-700">{po.supplier_name}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-500">{formatPlainDate(po.order_date)}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-500">
+                      <td className="px-4 py-3 text-ink">{po.supplier_name}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-ink-muted">{formatPlainDate(po.order_date)}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-ink-muted">
                         {po.expected_date ? formatPlainDate(po.expected_date) : '-'}
                       </td>
-                      <td className="px-4 py-3 text-center text-slate-600">{po.items.length}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-slate-800">{formatRupiah(po.total)}</td>
+                      <td className="px-4 py-3 text-center text-ink-muted">{po.items.length}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-ink">{formatRupiah(po.total)}</td>
                       <td className="px-4 py-3">
                         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_BADGE[po.status]}`}>
                           {PO_STATUS_LABELS[po.status]}
@@ -421,7 +421,7 @@ export default function PurchaseOrdersPage() {
 
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <span className="text-sm font-medium text-slate-700">
+              <span className="text-sm font-medium text-ink">
                 Item Pesanan
                 <span className="ml-0.5 text-red-500" aria-hidden>
                   *
@@ -431,7 +431,7 @@ export default function PurchaseOrdersPage() {
                 + Tambah baris
               </Button>
             </div>
-            {fieldErrors.items && <p className="mb-2 text-xs font-medium text-red-600">{fieldErrors.items}</p>}
+            {fieldErrors.items && <p className="mb-2 text-xs font-medium text-red-600 dark:text-red-300">{fieldErrors.items}</p>}
 
             <div className="space-y-2">
               {lines.map((line, index) => {
@@ -443,7 +443,7 @@ export default function PurchaseOrdersPage() {
                       value={line.product_id}
                       onChange={(event) => setLineProduct(index, event.target.value)}
                       aria-label={`Produk baris ${index + 1}`}
-                      className="col-span-12 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 sm:col-span-5"
+                      className="col-span-12 rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-emerald-500 sm:col-span-5"
                     >
                       <option value="">Pilih produk</option>
                       {products.map((product) => (
@@ -463,7 +463,7 @@ export default function PurchaseOrdersPage() {
                       }
                       placeholder="Qty"
                       aria-label={`Jumlah baris ${index + 1}`}
-                      className="col-span-3 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-500 sm:col-span-2"
+                      className="col-span-3 rounded-xl border border-line px-3 py-2 text-sm outline-none focus:border-emerald-500 sm:col-span-2"
                     />
                     <input
                       type="number"
@@ -476,16 +476,16 @@ export default function PurchaseOrdersPage() {
                       }
                       placeholder="Harga beli"
                       aria-label={`Harga beli baris ${index + 1}`}
-                      className="col-span-5 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-500 sm:col-span-3"
+                      className="col-span-5 rounded-xl border border-line px-3 py-2 text-sm outline-none focus:border-emerald-500 sm:col-span-3"
                     />
-                    <span className="col-span-3 truncate text-right text-xs font-semibold text-slate-700 sm:col-span-1">
+                    <span className="col-span-3 truncate text-right text-xs font-semibold text-ink sm:col-span-1">
                       {formatRupiah(lineTotal)}
                     </span>
                     <button
                       type="button"
                       onClick={() => setLines((prev) => (prev.length === 1 ? [emptyLine()] : prev.filter((_, i) => i !== index)))}
                       aria-label={`Hapus baris ${index + 1}`}
-                      className="col-span-1 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                      className="col-span-1 rounded-lg p-1.5 text-ink-subtle transition-colors hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-600 dark:hover:text-red-300"
                     >
                       ✕
                     </button>
@@ -494,9 +494,9 @@ export default function PurchaseOrdersPage() {
               })}
             </div>
 
-            <div className="mt-3 flex justify-between border-t border-slate-200 pt-3 text-base font-bold">
-              <span className="text-slate-700">Total Pesanan</span>
-              <span className="text-emerald-600">{formatRupiah(draftTotal)}</span>
+            <div className="mt-3 flex justify-between border-t border-line pt-3 text-base font-bold">
+              <span className="text-ink">Total Pesanan</span>
+              <span className="text-emerald-600 dark:text-emerald-300">{formatRupiah(draftTotal)}</span>
             </div>
           </div>
 
@@ -542,9 +542,9 @@ export default function PurchaseOrdersPage() {
               />
             </div>
 
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <div className="overflow-x-auto rounded-xl border border-line">
               <table className="w-full min-w-[420px] text-sm">
-                <thead className="bg-slate-50/70 text-left text-xs uppercase tracking-wide text-slate-500">
+                <thead className="bg-surface-2 text-left text-xs uppercase tracking-wide text-ink-muted">
                   <tr>
                     <th className="px-3 py-2 font-semibold">Produk</th>
                     <th className="px-3 py-2 text-center font-semibold">Qty</th>
@@ -552,31 +552,31 @@ export default function PurchaseOrdersPage() {
                     <th className="px-3 py-2 text-right font-semibold">Subtotal</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-line-soft">
                   {detail.items.map((item) => (
                     <tr key={item.id}>
-                      <td className="px-3 py-2 text-slate-700">{item.product_name}</td>
-                      <td className="px-3 py-2 text-center text-slate-600">{formatNumber(item.quantity)}</td>
-                      <td className="px-3 py-2 text-right text-slate-600">{formatRupiah(item.cost_price)}</td>
-                      <td className="px-3 py-2 text-right font-medium text-slate-800">{formatRupiah(item.subtotal)}</td>
+                      <td className="px-3 py-2 text-ink">{item.product_name}</td>
+                      <td className="px-3 py-2 text-center text-ink-muted">{formatNumber(item.quantity)}</td>
+                      <td className="px-3 py-2 text-right text-ink-muted">{formatRupiah(item.cost_price)}</td>
+                      <td className="px-3 py-2 text-right font-medium text-ink">{formatRupiah(item.subtotal)}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
-                  <tr className="border-t border-slate-200 bg-slate-50/70">
-                    <td colSpan={3} className="px-3 py-2 text-right font-semibold text-slate-700">
+                  <tr className="border-t border-line bg-surface-2">
+                    <td colSpan={3} className="px-3 py-2 text-right font-semibold text-ink">
                       Total
                     </td>
-                    <td className="px-3 py-2 text-right font-bold text-emerald-600">{formatRupiah(detail.total)}</td>
+                    <td className="px-3 py-2 text-right font-bold text-emerald-600 dark:text-emerald-300">{formatRupiah(detail.total)}</td>
                   </tr>
                 </tfoot>
               </table>
             </div>
 
             {detail.notes && (
-              <div className="rounded-xl border border-slate-200 p-3 text-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Catatan</p>
-                <p className="mt-1 text-slate-700">{detail.notes}</p>
+              <div className="rounded-xl border border-line p-3 text-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Catatan</p>
+                <p className="mt-1 text-ink">{detail.notes}</p>
               </div>
             )}
           </div>
@@ -609,9 +609,9 @@ export default function PurchaseOrdersPage() {
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-slate-200/70 p-3">
-      <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-0.5 font-medium text-slate-800">{value}</p>
+    <div className="rounded-xl border border-line p-3">
+      <p className="text-xs uppercase tracking-wide text-ink-muted">{label}</p>
+      <p className="mt-0.5 font-medium text-ink">{value}</p>
     </div>
   );
 }
@@ -635,8 +635,8 @@ function IconButton({
       aria-label={label}
       className={`rounded-lg p-1.5 text-sm transition-colors ${
         danger
-          ? 'text-slate-400 hover:bg-red-50 hover:text-red-600'
-          : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+          ? 'text-ink-subtle hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-600 dark:hover:text-red-300'
+          : 'text-ink-muted hover:bg-surface-3 hover:text-ink'
       }`}
     >
       {children}

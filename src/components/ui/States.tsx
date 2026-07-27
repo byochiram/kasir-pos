@@ -15,7 +15,7 @@ export function PageLoader({ label = 'Memuat data...' }: { label?: string }) {
   return (
     <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3" role="status" aria-live="polite">
       <Spinner className="h-10 w-10 border-4" />
-      <p className="text-sm text-slate-500">{label}</p>
+      <p className="text-sm text-ink-muted">{label}</p>
     </div>
   );
 }
@@ -50,8 +50,8 @@ export function EmptyState({
       <div className="mb-3 text-4xl opacity-60" aria-hidden>
         {icon}
       </div>
-      <p className="font-semibold text-slate-700">{title}</p>
-      {description && <p className="mt-1 max-w-sm text-sm text-slate-500">{description}</p>}
+      <p className="font-semibold text-ink">{title}</p>
+      {description && <p className="mt-1 max-w-sm text-sm text-ink-muted">{description}</p>}
       {action && <div className="mt-5">{action}</div>}
     </div>
   );
@@ -60,14 +60,14 @@ export function EmptyState({
 export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
     <div
-      className="flex flex-col items-center justify-center rounded-2xl border border-red-200 bg-red-50/60 px-6 py-12 text-center"
+      className="flex flex-col items-center justify-center rounded-2xl border border-red-200 dark:border-red-500/30 bg-red-50/60 px-6 py-12 text-center"
       role="alert"
     >
       <div className="mb-3 text-4xl" aria-hidden>
         ⚠️
       </div>
-      <p className="font-semibold text-red-800">Gagal memuat data</p>
-      <p className="mt-1 max-w-md text-sm text-red-700">{message}</p>
+      <p className="font-semibold text-red-800 dark:text-red-300">Gagal memuat data</p>
+      <p className="mt-1 max-w-md text-sm text-red-700 dark:text-red-300">{message}</p>
       {onRetry && (
         <Button variant="secondary" size="sm" className="mt-5" onClick={onRetry}>
           Coba lagi

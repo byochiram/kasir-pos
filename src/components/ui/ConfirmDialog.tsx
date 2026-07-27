@@ -64,7 +64,7 @@ export default function ConfirmDialog({
       }
     >
       <div className="space-y-4">
-        <div className="text-sm text-slate-600">{message}</div>
+        <div className="text-sm text-ink-muted">{message}</div>
         {reasonLabel && (
           <TextAreaField
             label={reasonLabel}

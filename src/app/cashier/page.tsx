@@ -276,9 +276,9 @@ export default function CashierPage() {
   if (productsLoading) return <PageLoader label="Menyiapkan kasir..." />;
 
   const cartPanel = (
-    <div className="flex h-full flex-col bg-white">
-      <div className="flex shrink-0 items-center justify-between border-b border-slate-200/70 px-4 py-3">
-        <h2 className="font-bold text-slate-800">Keranjang</h2>
+    <div className="flex h-full flex-col bg-surface">
+      <div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-3">
+        <h2 className="font-bold text-ink">Keranjang</h2>
         <div className="flex items-center gap-2">
           <span className="rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white">
             {itemCount} item
@@ -287,7 +287,7 @@ export default function CashierPage() {
             <button
               type="button"
               onClick={resetCart}
-              className="rounded-lg px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600"
+              className="rounded-lg px-2 py-1 text-xs font-medium text-ink-muted transition-colors hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-600 dark:hover:text-red-300"
             >
               Kosongkan
             </button>
@@ -296,7 +296,7 @@ export default function CashierPage() {
             type="button"
             onClick={() => setCartOpenMobile(false)}
             aria-label="Tutup keranjang"
-            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 lg:hidden"
+            className="rounded-lg p-1 text-ink-subtle hover:bg-surface-3 lg:hidden"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -309,13 +309,13 @@ export default function CashierPage() {
         {cartLines.length === 0 ? (
           <EmptyState icon="🛒" title="Keranjang kosong" description="Pilih produk atau scan barcode untuk memulai." />
         ) : (
-          <ul className="divide-y divide-slate-100">
+          <ul className="divide-y divide-line-soft">
             {cartLines.map((line) => (
               <li key={line.productId} className="p-3.5">
                 <div className="mb-2 flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-slate-800">{line.product.name}</p>
-                    <p className="mt-0.5 text-xs text-slate-500">
+                    <p className="truncate text-sm font-medium text-ink">{line.product.name}</p>
+                    <p className="mt-0.5 text-xs text-ink-muted">
                       {formatRupiah(line.product.price)} / {line.product.unit}
                     </p>
                   </div>
@@ -323,7 +323,7 @@ export default function CashierPage() {
                     type="button"
                     onClick={() => setQuantity(line.productId, 0)}
                     aria-label={`Hapus ${line.product.name} dari keranjang`}
-                    className="rounded-lg p-1 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                    className="rounded-lg p-1 text-ink-subtle transition-colors hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-500"
                   >
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -336,7 +336,7 @@ export default function CashierPage() {
                     type="button"
                     onClick={() => setQuantity(line.productId, line.quantity - 1)}
                     aria-label="Kurangi jumlah"
-                    className="h-8 w-8 rounded-lg border border-slate-200 text-sm font-bold text-slate-600 transition-colors hover:bg-slate-100"
+                    className="h-8 w-8 rounded-lg border border-line text-sm font-bold text-ink-muted transition-colors hover:bg-surface-3"
                   >
                     −
                   </button>
@@ -347,27 +347,27 @@ export default function CashierPage() {
                     value={line.quantity}
                     onChange={(event) => setQuantity(line.productId, Number.parseInt(event.target.value, 10) || 0)}
                     aria-label={`Jumlah ${line.product.name}`}
-                    className="h-8 w-14 rounded-lg border border-slate-200 text-center text-sm font-semibold outline-none focus:border-emerald-500"
+                    className="h-8 w-14 rounded-lg border border-line text-center text-sm font-semibold outline-none focus:border-emerald-500"
                   />
                   <button
                     type="button"
                     onClick={() => setQuantity(line.productId, line.quantity + 1)}
                     disabled={line.quantity >= line.product.stock}
                     aria-label="Tambah jumlah"
-                    className="h-8 w-8 rounded-lg border border-slate-200 text-sm font-bold text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-40"
+                    className="h-8 w-8 rounded-lg border border-line text-sm font-bold text-ink-muted transition-colors hover:bg-surface-3 disabled:opacity-40"
                   >
                     +
                   </button>
-                  <span className="ml-auto text-sm font-semibold text-slate-800">{formatRupiah(line.total)}</span>
+                  <span className="ml-auto text-sm font-semibold text-ink">{formatRupiah(line.total)}</span>
                 </div>
 
                 <div className="mt-2 flex items-center gap-1.5">
-                  <span className="text-[11px] text-slate-500">Diskon</span>
+                  <span className="text-[11px] text-ink-muted">Diskon</span>
                   <button
                     type="button"
                     onClick={() => setLineDiscount(line.productId, line.discount, 'amount')}
                     className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${
-                      line.discountType === 'amount' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'
+                      line.discountType === 'amount' ? 'bg-emerald-600 text-white' : 'bg-surface-3 text-ink-muted'
                     }`}
                   >
                     Rp
@@ -376,7 +376,7 @@ export default function CashierPage() {
                     type="button"
                     onClick={() => setLineDiscount(line.productId, line.discount, 'percent')}
                     className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${
-                      line.discountType === 'percent' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'
+                      line.discountType === 'percent' ? 'bg-emerald-600 text-white' : 'bg-surface-3 text-ink-muted'
                     }`}
                   >
                     %
@@ -391,9 +391,9 @@ export default function CashierPage() {
                       setLineDiscount(line.productId, Number.parseInt(event.target.value, 10) || 0, line.discountType)
                     }
                     aria-label={`Diskon untuk ${line.product.name}`}
-                    className="h-7 w-20 rounded-lg border border-slate-200 px-2 text-right text-[11px] outline-none focus:border-emerald-500"
+                    className="h-7 w-20 rounded-lg border border-line px-2 text-right text-[11px] outline-none focus:border-emerald-500"
                   />
-                  <span className="ml-auto text-[11px] text-slate-400">
+                  <span className="ml-auto text-[11px] text-ink-subtle">
                     {line.discountType === 'amount' ? 'per item' : 'per baris'}
                   </span>
                 </div>
@@ -404,21 +404,21 @@ export default function CashierPage() {
       </div>
 
       {cartLines.length > 0 && (
-        <div className="shrink-0 border-t border-slate-200/70">
-          <div className="space-y-2 bg-slate-50/70 px-4 py-3 text-sm">
+        <div className="shrink-0 border-t border-line">
+          <div className="space-y-2 bg-surface-2 px-4 py-3 text-sm">
             <div className="flex justify-between">
-              <span className="text-slate-500">Subtotal</span>
-              <span className="font-medium text-slate-700">{formatRupiah(subtotal)}</span>
+              <span className="text-ink-muted">Subtotal</span>
+              <span className="font-medium text-ink">{formatRupiah(subtotal)}</span>
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="text-slate-500">Diskon</span>
+              <span className="text-ink-muted">Diskon</span>
               <div className="ml-auto flex items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => setDiscountType('amount')}
                   className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
-                    discountType === 'amount' ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'
+                    discountType === 'amount' ? 'bg-emerald-600 text-white' : 'bg-line text-ink-muted'
                   }`}
                 >
                   Rp
@@ -427,7 +427,7 @@ export default function CashierPage() {
                   type="button"
                   onClick={() => setDiscountType('percent')}
                   className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
-                    discountType === 'percent' ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'
+                    discountType === 'percent' ? 'bg-emerald-600 text-white' : 'bg-line text-ink-muted'
                   }`}
                 >
                   %
@@ -442,18 +442,18 @@ export default function CashierPage() {
                   aria-label="Diskon transaksi"
                   aria-invalid={discountTooBig || undefined}
                   className={`h-8 w-24 rounded-lg border px-2 text-right text-xs outline-none ${
-                    discountTooBig ? 'border-red-400 bg-red-50' : 'border-slate-200 focus:border-emerald-500'
+                    discountTooBig ? 'border-red-400 bg-red-50 dark:bg-red-500/15' : 'border-line focus:border-emerald-500'
                   }`}
                 />
               </div>
             </div>
             {discountTooBig && (
-              <p className="text-right text-xs font-medium text-red-600">
+              <p className="text-right text-xs font-medium text-red-600 dark:text-red-300">
                 {discountType === 'percent' ? 'Maksimal 100%' : 'Diskon melebihi subtotal'}
               </p>
             )}
             {discountAmount > 0 && !discountTooBig && (
-              <div className="flex justify-between text-red-600">
+              <div className="flex justify-between text-red-600 dark:text-red-300">
                 <span>Potongan</span>
                 <span>-{formatRupiah(discountAmount)}</span>
               </div>
@@ -461,14 +461,14 @@ export default function CashierPage() {
 
             {taxRate > 0 && (
               <div className="flex justify-between">
-                <span className="text-slate-500">Pajak ({taxRate}%)</span>
-                <span className="font-medium text-slate-700">{formatRupiah(taxAmount)}</span>
+                <span className="text-ink-muted">Pajak ({taxRate}%)</span>
+                <span className="font-medium text-ink">{formatRupiah(taxAmount)}</span>
               </div>
             )}
 
-            <div className="flex justify-between border-t border-slate-200 pt-2 text-lg font-bold">
-              <span className="text-slate-800">Total</span>
-              <span className="text-emerald-600">{formatRupiah(total)}</span>
+            <div className="flex justify-between border-t border-line pt-2 text-lg font-bold">
+              <span className="text-ink">Total</span>
+              <span className="text-emerald-600 dark:text-emerald-300">{formatRupiah(total)}</span>
             </div>
           </div>
 
@@ -478,7 +478,7 @@ export default function CashierPage() {
                 value={customerId}
                 onChange={(event) => setCustomerId(event.target.value)}
                 aria-label="Pilih pelanggan"
-                className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-500"
+                className="min-w-0 flex-1 rounded-xl border border-line bg-surface px-3 py-2.5 text-sm outline-none focus:border-emerald-500"
               >
                 <option value="">Pelanggan Umum</option>
                 {customers.map((customer) => (
@@ -502,8 +502,8 @@ export default function CashierPage() {
                   aria-pressed={paymentMethod === option.key}
                   className={`rounded-xl border-2 py-2 text-xs font-semibold transition-all ${
                     paymentMethod === option.key
-                      ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                      : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                      ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                      : 'border-line text-ink-muted hover:border-ink-subtle'
                   }`}
                 >
                   <span aria-hidden>{option.icon}</span>
@@ -522,13 +522,13 @@ export default function CashierPage() {
                   onChange={(event) => setAmountPaid(event.target.value)}
                   placeholder="Jumlah uang diterima"
                   aria-label="Jumlah uang diterima"
-                  className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                  className="w-full rounded-xl border border-line px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                 />
                 <div className="grid grid-cols-5 gap-1.5">
                   <button
                     type="button"
                     onClick={() => setAmountPaid(String(total))}
-                    className="rounded-lg bg-emerald-100 py-1.5 text-[11px] font-bold text-emerald-700 transition-colors hover:bg-emerald-200"
+                    className="rounded-lg bg-emerald-100 py-1.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 transition-colors hover:bg-emerald-200"
                   >
                     Pas
                   </button>
@@ -537,7 +537,7 @@ export default function CashierPage() {
                       key={amount}
                       type="button"
                       onClick={() => setAmountPaid(String(amount))}
-                      className="rounded-lg bg-slate-100 py-1.5 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-200"
+                      className="rounded-lg bg-surface-3 py-1.5 text-[11px] font-semibold text-ink transition-colors hover:bg-line"
                     >
                       {amount / 1000}rb
                     </button>
@@ -545,8 +545,8 @@ export default function CashierPage() {
                 </div>
                 {paid > 0 && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">Kembalian</span>
-                    <span className={`font-bold ${change >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                    <span className="text-ink-muted">Kembalian</span>
+                    <span className={`font-bold ${change >= 0 ? 'text-emerald-600 dark:text-emerald-300' : 'text-red-500'}`}>
                       {change >= 0 ? formatRupiah(change) : `Kurang ${formatRupiah(-change)}`}
                     </span>
                   </div>
@@ -557,7 +557,7 @@ export default function CashierPage() {
             <Button onClick={handlePay} disabled={!canPay} loading={processing} className="w-full py-3.5 text-base">
               {processing ? 'Memproses...' : `Bayar ${formatRupiah(total)}`}
             </Button>
-            <p className="text-center text-[11px] text-slate-400">
+            <p className="text-center text-[11px] text-ink-subtle">
               F2 cari produk · F4 bayar
             </p>
           </div>
@@ -568,10 +568,10 @@ export default function CashierPage() {
 
   return (
     <div className="flex h-full gap-0 overflow-hidden lg:gap-4 lg:p-4">
-      <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-slate-50 lg:rounded-2xl lg:border lg:border-slate-200/70 lg:bg-white">
-        <div className="flex shrink-0 flex-col gap-2 border-b border-slate-200/70 bg-white p-3 pl-14 sm:flex-row lg:pl-3">
+      <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-surface-2 lg:rounded-2xl lg:border lg:border-line lg:bg-surface">
+        <div className="flex shrink-0 flex-col gap-2 border-b border-line bg-surface p-3 pl-14 sm:flex-row lg:pl-3">
           <div className="relative min-w-0 flex-1">
-            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden>
+            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-subtle" aria-hidden>
               🔍
             </span>
             <input
@@ -583,14 +583,14 @@ export default function CashierPage() {
               placeholder="Cari produk atau scan barcode, lalu Enter..."
               aria-label="Cari produk atau scan barcode"
               autoFocus
-              className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-4 text-sm outline-none transition-all focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+              className="w-full rounded-xl border border-line py-2.5 pl-10 pr-4 text-sm outline-none transition-all focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
             />
           </div>
           <select
             value={category}
             onChange={(event) => setCategory(event.target.value)}
             aria-label="Filter kategori"
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-emerald-500"
+            className="rounded-xl border border-line bg-surface px-4 py-2.5 text-sm outline-none focus:border-emerald-500"
           >
             <option value="">Semua Kategori</option>
             {categories.map((item) => (
@@ -615,29 +615,29 @@ export default function CashierPage() {
                     type="button"
                     onClick={() => addToCart(product)}
                     disabled={out}
-                    className={`relative rounded-2xl border bg-white p-3 text-left shadow-sm transition-all ${
+                    className={`relative rounded-2xl border bg-surface p-3 text-left shadow-sm transition-all ${
                       out
-                        ? 'cursor-not-allowed border-slate-200 opacity-50'
+                        ? 'cursor-not-allowed border-line opacity-50'
                         : inCart
                           ? 'border-emerald-300 bg-emerald-50/60 ring-1 ring-emerald-200'
-                          : 'border-slate-200/70 hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md'
+                          : 'border-line hover:-translate-y-0.5 hover:border-emerald-200 dark:hover:border-emerald-500/30 hover:shadow-md'
                     }`}
                   >
                     <span
                       className={`absolute right-2 top-2 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                         out
-                          ? 'bg-red-50 text-red-600'
+                          ? 'bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300'
                           : product.stock <= product.min_stock
-                            ? 'bg-amber-50 text-amber-700'
-                            : 'bg-emerald-50 text-emerald-700'
+                            ? 'bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                            : 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
                       }`}
                     >
                       {out ? 'Habis' : `Stok ${product.stock}`}
                     </span>
-                    <p className="mb-1.5 mt-5 line-clamp-2 min-h-[2.5rem] text-sm font-medium text-slate-800">
+                    <p className="mb-1.5 mt-5 line-clamp-2 min-h-[2.5rem] text-sm font-medium text-ink">
                       {product.name}
                     </p>
-                    <p className="text-sm font-bold text-emerald-600">{formatRupiah(product.price)}</p>
+                    <p className="text-sm font-bold text-emerald-600 dark:text-emerald-300">{formatRupiah(product.price)}</p>
                     {inCart && (
                       <span className="absolute -left-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600 text-[11px] font-bold text-white shadow-sm">
                         {inCart.quantity}
@@ -652,7 +652,7 @@ export default function CashierPage() {
       </section>
 
       {/* Desktop: panel keranjang menempel di kanan. */}
-      <aside className="hidden w-[380px] shrink-0 overflow-hidden rounded-2xl border border-slate-200/70 shadow-sm lg:block">
+      <aside className="hidden w-[380px] shrink-0 overflow-hidden rounded-2xl border border-line shadow-sm lg:block">
         {cartPanel}
       </aside>
 

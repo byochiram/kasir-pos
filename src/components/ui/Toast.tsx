@@ -89,7 +89,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               key={toast.id}
               role="status"
               aria-live={toast.kind === 'error' ? 'assertive' : 'polite'}
-              className="animate-slide-up flex items-start gap-3 overflow-hidden rounded-xl border border-slate-200 bg-white p-3.5 shadow-lg"
+              className="animate-slide-up flex items-start gap-3 overflow-hidden rounded-xl border border-line bg-surface p-3.5 shadow-lg"
             >
               <span
                 className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${style.bar}`}
@@ -98,14 +98,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 {style.icon}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-slate-500">{style.label}</p>
-                <p className="mt-0.5 break-words text-sm text-slate-800">{toast.message}</p>
+                <p className="text-xs font-semibold text-ink-muted">{style.label}</p>
+                <p className="mt-0.5 break-words text-sm text-ink">{toast.message}</p>
               </div>
               <button
                 type="button"
                 onClick={() => dismiss(toast.id)}
                 aria-label="Tutup notifikasi"
-                className="shrink-0 rounded-lg p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                className="shrink-0 rounded-lg p-1 text-ink-subtle transition-colors hover:bg-surface-3 hover:text-ink-muted"
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

@@ -26,13 +26,13 @@ export default function Pagination({ total, limit, offset, onChange, unit = 'dat
 
   return (
     <nav
-      className="flex flex-col items-center justify-between gap-3 border-t border-slate-200/70 px-4 py-3 sm:flex-row"
+      className="flex flex-col items-center justify-between gap-3 border-t border-line px-4 py-3 sm:flex-row"
       aria-label="Navigasi halaman"
     >
-      <p className="text-xs text-slate-500">
-        Menampilkan <span className="font-semibold text-slate-700">{formatNumber(from)}</span>–
-        <span className="font-semibold text-slate-700">{formatNumber(to)}</span> dari{' '}
-        <span className="font-semibold text-slate-700">{formatNumber(total)}</span> {unit}
+      <p className="text-xs text-ink-muted">
+        Menampilkan <span className="font-semibold text-ink">{formatNumber(from)}</span>–
+        <span className="font-semibold text-ink">{formatNumber(to)}</span> dari{' '}
+        <span className="font-semibold text-ink">{formatNumber(total)}</span> {unit}
       </p>
 
       {totalPages > 1 && (
@@ -41,13 +41,13 @@ export default function Pagination({ total, limit, offset, onChange, unit = 'dat
             type="button"
             onClick={() => onChange(Math.max(0, offset - limit))}
             disabled={currentPage === 1}
-            className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="Halaman sebelumnya"
           >
             ‹
           </button>
 
-          {windowStart > 1 && <span className="px-1 text-xs text-slate-400">…</span>}
+          {windowStart > 1 && <span className="px-1 text-xs text-ink-subtle">…</span>}
 
           {pages.map((page) => (
             <button
@@ -58,20 +58,20 @@ export default function Pagination({ total, limit, offset, onChange, unit = 'dat
               className={`min-w-[32px] rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors ${
                 page === currentPage
                   ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
+                  : 'border border-line text-ink-muted hover:bg-surface-2'
               }`}
             >
               {page}
             </button>
           ))}
 
-          {windowStart + 5 <= totalPages && <span className="px-1 text-xs text-slate-400">…</span>}
+          {windowStart + 5 <= totalPages && <span className="px-1 text-xs text-ink-subtle">…</span>}
 
           <button
             type="button"
             onClick={() => onChange(offset + limit)}
             disabled={currentPage >= totalPages}
-            className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="Halaman berikutnya"
           >
             ›

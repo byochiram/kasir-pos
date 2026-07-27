@@ -8,6 +8,7 @@ import { initials } from '@/lib/format';
 import { useApp } from '@/components/AppProvider';
 import type { Role } from '@/lib/types';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import ThemeToggle from '@/components/ThemeToggle';
 
 interface NavItem {
   href: string;
@@ -182,7 +183,7 @@ export default function Sidebar() {
         onClick={() => setMobileOpen(true)}
         aria-label="Buka menu navigasi"
         aria-expanded={mobileOpen}
-        className={`fixed left-3 top-2.5 z-30 rounded-xl border border-slate-200 bg-white p-2 text-slate-700 shadow-sm lg:hidden ${
+        className={`fixed left-3 top-2.5 z-30 rounded-xl border border-line bg-surface p-2 text-ink shadow-sm lg:hidden ${
           mobileOpen ? 'pointer-events-none opacity-0' : ''
         }`}
       >
@@ -216,7 +217,7 @@ export default function Sidebar() {
             type="button"
             onClick={() => setMobileOpen(false)}
             aria-label="Tutup menu"
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-white/10 hover:text-white lg:hidden"
+            className="rounded-lg p-1.5 text-ink-subtle hover:bg-white/10 hover:text-white lg:hidden"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -262,6 +263,8 @@ export default function Sidebar() {
             </div>
           )}
 
+          <ThemeToggle collapsed={collapsed} />
+
           <button
             type="button"
             onClick={() => setConfirmLogout(true)}
@@ -285,7 +288,7 @@ export default function Sidebar() {
             type="button"
             onClick={toggleCollapsed}
             aria-label={collapsed ? 'Perlebar sidebar' : 'Perkecil sidebar'}
-            className={`mt-1 hidden w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-slate-400 transition-colors hover:bg-white/10 hover:text-white lg:flex ${
+            className={`mt-1 hidden w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-ink-subtle transition-colors hover:bg-white/10 hover:text-white lg:flex ${
               collapsed ? 'justify-center px-0' : ''
             }`}
           >

@@ -42,13 +42,13 @@ function LoginForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700" role="alert">
+        <div className="rounded-xl border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/15 px-3.5 py-2.5 text-sm text-red-700 dark:text-red-300" role="alert">
           {error}
         </div>
       )}
 
       <div>
-        <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-slate-700">
+        <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-ink">
           Email
         </label>
         <input
@@ -60,12 +60,12 @@ function LoginForm() {
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           placeholder="nama@toko.com"
-          className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition-all focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+          className="w-full rounded-xl border border-line px-3.5 py-2.5 text-sm outline-none transition-all focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
         />
       </div>
 
       <div>
-        <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-slate-700">
+        <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-ink">
           Password
         </label>
         <div className="relative">
@@ -78,18 +78,18 @@ function LoginForm() {
             onChange={(event) => setPassword(event.target.value)}
             onKeyUp={(event) => setCapsLock(event.getModifierState('CapsLock'))}
             placeholder="••••••••"
-            className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 pr-11 text-sm outline-none transition-all focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+            className="w-full rounded-xl border border-line px-3.5 py-2.5 pr-11 text-sm outline-none transition-all focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
           />
           <button
             type="button"
             onClick={() => setShowPassword((prev) => !prev)}
             aria-label={showPassword ? 'Sembunyikan password' : 'Tampilkan password'}
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-ink-subtle transition-colors hover:bg-surface-3 hover:text-ink-muted"
           >
             {showPassword ? '🙈' : '👁'}
           </button>
         </div>
-        {capsLock && <p className="mt-1 text-xs font-medium text-amber-600">Caps Lock sedang aktif</p>}
+        {capsLock && <p className="mt-1 text-xs font-medium text-amber-600 dark:text-amber-300">Caps Lock sedang aktif</p>}
       </div>
 
       <Button type="submit" loading={loading} className="w-full py-3">
@@ -138,25 +138,25 @@ export default function LoginPage() {
         </div>
       </div>
 
-      <div className="flex flex-1 items-center justify-center overflow-y-auto bg-slate-50 px-5 py-10">
+      <div className="flex flex-1 items-center justify-center overflow-y-auto bg-surface-2 px-5 py-10">
         <div className="w-full max-w-[380px]">
           <div className="mb-7 lg:hidden">
             <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-500 text-lg font-black text-white">
               K
             </span>
-            <h1 className="text-xl font-bold text-slate-800">KasirApp</h1>
+            <h1 className="text-xl font-bold text-ink">KasirApp</h1>
           </div>
 
-          <h2 className="text-xl font-bold text-slate-800">Masuk ke akun Anda</h2>
-          <p className="mb-6 mt-1 text-sm text-slate-500">Gunakan email dan password yang diberikan admin toko.</p>
+          <h2 className="text-xl font-bold text-ink">Masuk ke akun Anda</h2>
+          <p className="mb-6 mt-1 text-sm text-ink-muted">Gunakan email dan password yang diberikan admin toko.</p>
 
-          <Suspense fallback={<div className="h-64 animate-pulse rounded-xl bg-slate-100" />}>
+          <Suspense fallback={<div className="h-64 animate-pulse rounded-xl bg-surface-3" />}>
             <LoginForm />
           </Suspense>
 
           {process.env.NODE_ENV === 'development' && (
-            <div className="mt-6 rounded-xl border border-dashed border-slate-300 bg-white p-3 text-xs text-slate-500">
-              <p className="mb-1 font-semibold text-slate-600">Akun demo (hanya tampil saat development)</p>
+            <div className="mt-6 rounded-xl border border-dashed border-line bg-surface p-3 text-xs text-ink-muted">
+              <p className="mb-1 font-semibold text-ink-muted">Akun demo (hanya tampil saat development)</p>
               <p>Admin — admin@kasir.com / admin123</p>
               <p>Kasir — kasir@kasir.com / kasir123</p>
             </div>

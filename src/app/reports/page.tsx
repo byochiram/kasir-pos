@@ -13,8 +13,8 @@ import BarChart from '@/components/charts/BarChart';
 import { ErrorState, PageLoader } from '@/components/ui/States';
 import type { SalesReport } from '@/lib/types';
 
-const SERIES_SALES = '#2a78d6';
-const SERIES_PROFIT = '#008300';
+const SERIES_SALES = 'var(--chart-1)';
+const SERIES_PROFIT = 'var(--chart-2)';
 
 const PAYMENT_LABELS: Record<string, string> = {
   cash: 'Tunai',
@@ -109,7 +109,7 @@ export default function ReportsPage() {
         }
       />
 
-      <div className="mb-4 rounded-2xl border border-slate-200/70 bg-white p-3 shadow-sm">
+      <div className="mb-4 rounded-2xl border border-line bg-surface p-3 shadow-sm">
         <div className="flex flex-wrap items-center gap-2">
           <input
             type="date"
@@ -119,9 +119,9 @@ export default function ReportsPage() {
               setActiveRange(null);
             }}
             aria-label="Tanggal mulai"
-            className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-500 sm:flex-none"
+            className="min-w-0 flex-1 rounded-xl border border-line px-3 py-2 text-sm outline-none focus:border-emerald-500 sm:flex-none"
           />
-          <span className="text-sm text-slate-400">s/d</span>
+          <span className="text-sm text-ink-subtle">s/d</span>
           <input
             type="date"
             value={endDate}
@@ -130,7 +130,7 @@ export default function ReportsPage() {
               setActiveRange(null);
             }}
             aria-label="Tanggal akhir"
-            className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-500 sm:flex-none"
+            className="min-w-0 flex-1 rounded-xl border border-line px-3 py-2 text-sm outline-none focus:border-emerald-500 sm:flex-none"
           />
           <div className="flex flex-wrap gap-1.5">
             {QUICK_RANGES.map((range) => (
@@ -142,7 +142,7 @@ export default function ReportsPage() {
                 className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
                   activeRange === range.days
                     ? 'bg-emerald-600 text-white'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    : 'bg-surface-3 text-ink-muted hover:bg-line'
                 }`}
               >
                 {range.label}
@@ -151,7 +151,7 @@ export default function ReportsPage() {
           </div>
         </div>
         {dateInvalid && (
-          <p className="mt-2 text-xs font-medium text-red-600">Tanggal mulai tidak boleh setelah tanggal akhir.</p>
+          <p className="mt-2 text-xs font-medium text-red-600 dark:text-red-300">Tanggal mulai tidak boleh setelah tanggal akhir.</p>
         )}
       </div>
 
@@ -190,8 +190,8 @@ export default function ReportsPage() {
             />
           </div>
 
-          <section className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
-            <h2 className="mb-3 font-bold text-slate-800">Tren Penjualan Harian</h2>
+          <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
+            <h2 className="mb-3 font-bold text-ink">Tren Penjualan Harian</h2>
             <BarChart
               labels={report.dailySales.map((d) => formatPlainDate(d.date))}
               series={[
@@ -291,14 +291,14 @@ function SummaryCard({
   emphasis?: boolean;
   small?: boolean;
 }) {
-  const color = tone === 'negative' ? 'text-red-600' : tone === 'positive' ? 'text-emerald-600' : 'text-slate-800';
+  const color = tone === 'negative' ? 'text-red-600 dark:text-red-300' : tone === 'positive' ? 'text-emerald-600 dark:text-emerald-300' : 'text-ink';
   return (
     <div
-      className={`rounded-2xl border bg-white p-3.5 shadow-sm sm:p-4 ${
-        emphasis ? 'border-emerald-200 ring-1 ring-emerald-100' : 'border-slate-200/70'
+      className={`rounded-2xl border bg-surface p-3.5 shadow-sm sm:p-4 ${
+        emphasis ? 'border-emerald-200 dark:border-emerald-500/30 ring-1 ring-emerald-100' : 'border-line'
       }`}
     >
-      <p className="truncate text-xs uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="truncate text-xs uppercase tracking-wide text-ink-muted">{label}</p>
       <p className={`mt-1 break-words font-bold ${color} ${small ? 'text-base' : 'text-lg sm:text-xl'}`}>{value}</p>
     </div>
   );
@@ -306,10 +306,10 @@ function SummaryCard({
 
 function Panel({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm">
-      <div className="border-b border-slate-200/70 px-4 py-3">
-        <h2 className="font-bold text-slate-800">{title}</h2>
-        {note && <p className="mt-0.5 text-xs text-slate-500">{note}</p>}
+    <section className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
+      <div className="border-b border-line px-4 py-3">
+        <h2 className="font-bold text-ink">{title}</h2>
+        {note && <p className="mt-0.5 text-xs text-ink-muted">{note}</p>}
       </div>
       {children}
     </section>
@@ -317,7 +317,7 @@ function Panel({ title, note, children }: { title: string; note?: string; childr
 }
 
 function Empty({ label = 'Tidak ada data pada periode ini' }: { label?: string }) {
-  return <p className="px-4 py-10 text-center text-sm text-slate-400">{label}</p>;
+  return <p className="px-4 py-10 text-center text-sm text-ink-subtle">{label}</p>;
 }
 
 function SimpleTable({
@@ -334,7 +334,7 @@ function SimpleTable({
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
-        <thead className="bg-slate-50/70 text-xs uppercase tracking-wide text-slate-500">
+        <thead className="bg-surface-2 text-xs uppercase tracking-wide text-ink-muted">
           <tr>
             {head.map((cell, index) => (
               <th
@@ -346,14 +346,14 @@ function SimpleTable({
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody className="divide-y divide-line-soft">
           {rows.map((row, rowIndex) => (
-            <tr key={keyOf(row, rowIndex)} className="hover:bg-slate-50/60">
+            <tr key={keyOf(row, rowIndex)} className="hover:bg-surface-2">
               {row.map((cell, cellIndex) => (
                 <td
                   key={cellIndex}
                   className={`px-4 py-2.5 ${
-                    align[cellIndex] === 'right' ? 'text-right tabular-nums font-medium text-slate-800' : 'text-slate-600'
+                    align[cellIndex] === 'right' ? 'text-right tabular-nums font-medium text-ink' : 'text-ink-muted'
                   }`}
                 >
                   {cell}

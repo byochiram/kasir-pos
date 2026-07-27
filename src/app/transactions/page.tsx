@@ -149,8 +149,8 @@ export default function TransactionsPage() {
         }
       />
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm">
-        <div className="space-y-2 border-b border-slate-200/70 p-3">
+      <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
+        <div className="space-y-2 border-b border-line p-3">
           <div className="flex flex-col gap-2 sm:flex-row">
             <input
               type="search"
@@ -158,13 +158,13 @@ export default function TransactionsPage() {
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Cari no. invoice, pelanggan, atau kasir..."
               aria-label="Cari transaksi"
-              className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+              className="min-w-0 flex-1 rounded-xl border border-line px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
             />
             <select
               value={status}
               onChange={(event) => setStatus(event.target.value as TransactionStatus | '')}
               aria-label="Filter status"
-              className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500"
+              className="rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500"
             >
               <option value="">Semua Status</option>
               <option value="completed">Selesai</option>
@@ -178,15 +178,15 @@ export default function TransactionsPage() {
               value={startDate}
               onChange={(event) => setStartDate(event.target.value)}
               aria-label="Tanggal mulai"
-              className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-500 sm:flex-none"
+              className="min-w-0 flex-1 rounded-xl border border-line px-3 py-2 text-sm outline-none focus:border-emerald-500 sm:flex-none"
             />
-            <span className="text-sm text-slate-400">s/d</span>
+            <span className="text-sm text-ink-subtle">s/d</span>
             <input
               type="date"
               value={endDate}
               onChange={(event) => setEndDate(event.target.value)}
               aria-label="Tanggal akhir"
-              className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-500 sm:flex-none"
+              className="min-w-0 flex-1 rounded-xl border border-line px-3 py-2 text-sm outline-none focus:border-emerald-500 sm:flex-none"
             />
             <div className="flex gap-1.5">
               {[
@@ -198,7 +198,7 @@ export default function TransactionsPage() {
                   key={range.days}
                   type="button"
                   onClick={() => setQuickRange(range.days)}
-                  className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-200"
+                  className="rounded-lg bg-surface-3 px-2.5 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:bg-line"
                 >
                   {range.label}
                 </button>
@@ -210,7 +210,7 @@ export default function TransactionsPage() {
                     setStartDate('');
                     setEndDate('');
                   }}
-                  className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100"
+                  className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-ink-muted hover:bg-surface-3"
                 >
                   Reset
                 </button>
@@ -218,7 +218,7 @@ export default function TransactionsPage() {
             </div>
           </div>
           {dateInvalid && (
-            <p className="text-xs font-medium text-red-600">Tanggal mulai tidak boleh setelah tanggal akhir.</p>
+            <p className="text-xs font-medium text-red-600 dark:text-red-300">Tanggal mulai tidak boleh setelah tanggal akhir.</p>
           )}
         </div>
 
@@ -234,7 +234,7 @@ export default function TransactionsPage() {
           <>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[860px] text-sm">
-                <thead className="bg-slate-50/70 text-left text-xs uppercase tracking-wide text-slate-500">
+                <thead className="bg-surface-2 text-left text-xs uppercase tracking-wide text-ink-muted">
                   <tr>
                     <th className="px-4 py-3 font-semibold">Invoice</th>
                     <th className="px-4 py-3 font-semibold">Waktu</th>
@@ -246,11 +246,11 @@ export default function TransactionsPage() {
                     <th className="px-4 py-3 text-right font-semibold">Aksi</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-line-soft">
                   {items.map((transaction) => (
                     <tr
                       key={transaction.id}
-                      className={`transition-colors hover:bg-slate-50/60 ${
+                      className={`transition-colors hover:bg-surface-2 ${
                         transaction.status === 'voided' ? 'bg-red-50/30' : ''
                       }`}
                     >
@@ -258,29 +258,29 @@ export default function TransactionsPage() {
                         <button
                           type="button"
                           onClick={() => openDetail(transaction.id)}
-                          className="font-mono text-xs font-semibold text-slate-700 hover:text-emerald-600 hover:underline"
+                          className="font-mono text-xs font-semibold text-ink hover:text-emerald-600 dark:hover:text-emerald-300 hover:underline"
                         >
                           {transaction.invoice_no}
                         </button>
                         {transaction.status === 'voided' && (
-                          <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-red-700">
+                          <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-red-700 dark:text-red-300">
                             Batal
                           </span>
                         )}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-500">
+                      <td className="whitespace-nowrap px-4 py-3 text-ink-muted">
                         {formatDateTime(transaction.created_at, tzOffset)}
                       </td>
-                      <td className="px-4 py-3 text-slate-600">{transaction.customer_name ?? 'Umum'}</td>
-                      <td className="px-4 py-3 text-slate-600">{transaction.user_name}</td>
-                      <td className="px-4 py-3 text-center text-slate-600">
+                      <td className="px-4 py-3 text-ink-muted">{transaction.customer_name ?? 'Umum'}</td>
+                      <td className="px-4 py-3 text-ink-muted">{transaction.user_name}</td>
+                      <td className="px-4 py-3 text-center text-ink-muted">
                         {/* items bisa saja kosong bila data lama tidak lengkap. */}
                         {transaction.items?.length ?? 0}
                       </td>
-                      <td className="px-4 py-3 text-slate-600">
+                      <td className="px-4 py-3 text-ink-muted">
                         {PAYMENT_LABELS[transaction.payment_method] ?? transaction.payment_method}
                       </td>
-                      <td className="px-4 py-3 text-right font-semibold text-slate-800">
+                      <td className="px-4 py-3 text-right font-semibold text-ink">
                         {formatRupiah(transaction.total)}
                       </td>
                       <td className="px-4 py-3">
@@ -290,7 +290,7 @@ export default function TransactionsPage() {
                             onClick={() => openDetail(transaction.id)}
                             title="Lihat detail"
                             aria-label={`Detail ${transaction.invoice_no}`}
-                            className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+                            className="rounded-lg p-1.5 text-ink-muted transition-colors hover:bg-surface-3 hover:text-ink"
                           >
                             👁
                           </button>
@@ -300,7 +300,7 @@ export default function TransactionsPage() {
                               onClick={() => setVoiding(transaction)}
                               title="Batalkan transaksi"
                               aria-label={`Batalkan ${transaction.invoice_no}`}
-                              className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                              className="rounded-lg p-1.5 text-ink-subtle transition-colors hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-600 dark:hover:text-red-300"
                             >
                               ⊘
                             </button>
@@ -346,9 +346,9 @@ export default function TransactionsPage() {
         ) : (
           <div className="space-y-4">
             {detail.status === 'voided' && (
-              <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm" role="alert">
-                <p className="font-semibold text-red-800">Transaksi dibatalkan</p>
-                <p className="mt-0.5 text-red-700">
+              <div className="rounded-xl border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/15 p-3 text-sm" role="alert">
+                <p className="font-semibold text-red-800 dark:text-red-300">Transaksi dibatalkan</p>
+                <p className="mt-0.5 text-red-700 dark:text-red-300">
                   {detail.void_reason} — oleh {detail.voided_by_name ?? 'admin'} pada{' '}
                   {formatDateTime(detail.voided_at, tzOffset)}
                 </p>
@@ -362,9 +362,9 @@ export default function TransactionsPage() {
               <Info label="Metode Bayar" value={PAYMENT_LABELS[detail.payment_method] ?? detail.payment_method} />
             </div>
 
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <div className="overflow-x-auto rounded-xl border border-line">
               <table className="w-full min-w-[420px] text-sm">
-                <thead className="bg-slate-50/70 text-left text-xs uppercase tracking-wide text-slate-500">
+                <thead className="bg-surface-2 text-left text-xs uppercase tracking-wide text-ink-muted">
                   <tr>
                     <th className="px-3 py-2 font-semibold">Produk</th>
                     <th className="px-3 py-2 text-center font-semibold">Qty</th>
@@ -372,39 +372,39 @@ export default function TransactionsPage() {
                     <th className="px-3 py-2 text-right font-semibold">Subtotal</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-line-soft">
                   {detail.items.map((item) => (
                     <tr key={item.id}>
-                      <td className="px-3 py-2 text-slate-700">{item.product_name}</td>
-                      <td className="px-3 py-2 text-center text-slate-600">{item.quantity}</td>
-                      <td className="px-3 py-2 text-right text-slate-600">{formatRupiah(item.price)}</td>
-                      <td className="px-3 py-2 text-right font-medium text-slate-800">{formatRupiah(item.subtotal)}</td>
+                      <td className="px-3 py-2 text-ink">{item.product_name}</td>
+                      <td className="px-3 py-2 text-center text-ink-muted">{item.quantity}</td>
+                      <td className="px-3 py-2 text-right text-ink-muted">{formatRupiah(item.price)}</td>
+                      <td className="px-3 py-2 text-right font-medium text-ink">{formatRupiah(item.subtotal)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
 
-            <div className="space-y-1.5 rounded-xl bg-slate-50 p-3.5 text-sm">
+            <div className="space-y-1.5 rounded-xl bg-surface-2 p-3.5 text-sm">
               <Row label="Subtotal" value={formatRupiah(detail.subtotal)} />
               {detail.discount_amount > 0 && (
-                <Row label="Diskon" value={`-${formatRupiah(detail.discount_amount)}`} tone="text-red-600" />
+                <Row label="Diskon" value={`-${formatRupiah(detail.discount_amount)}`} tone="text-red-600 dark:text-red-300" />
               )}
               {detail.tax_amount > 0 && (
                 <Row label={`Pajak (${detail.tax_rate}%)`} value={formatRupiah(detail.tax_amount)} />
               )}
-              <div className="flex justify-between border-t border-slate-200 pt-1.5 text-base font-bold">
-                <span className="text-slate-800">Total</span>
-                <span className="text-emerald-600">{formatRupiah(detail.total)}</span>
+              <div className="flex justify-between border-t border-line pt-1.5 text-base font-bold">
+                <span className="text-ink">Total</span>
+                <span className="text-emerald-600 dark:text-emerald-300">{formatRupiah(detail.total)}</span>
               </div>
               <Row label="Dibayar" value={formatRupiah(detail.amount_paid)} />
               <Row label="Kembalian" value={formatRupiah(detail.change)} />
             </div>
 
             {detail.notes && (
-              <div className="rounded-xl border border-slate-200 p-3 text-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Catatan</p>
-                <p className="mt-1 text-slate-700">{detail.notes}</p>
+              <div className="rounded-xl border border-line p-3 text-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Catatan</p>
+                <p className="mt-1 text-ink">{detail.notes}</p>
               </div>
             )}
           </div>
@@ -452,17 +452,17 @@ export default function TransactionsPage() {
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-slate-200/70 p-3">
-      <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-0.5 font-medium text-slate-800">{value}</p>
+    <div className="rounded-xl border border-line p-3">
+      <p className="text-xs uppercase tracking-wide text-ink-muted">{label}</p>
+      <p className="mt-0.5 font-medium text-ink">{value}</p>
     </div>
   );
 }
 
-function Row({ label, value, tone = 'text-slate-700' }: { label: string; value: string; tone?: string }) {
+function Row({ label, value, tone = 'text-ink' }: { label: string; value: string; tone?: string }) {
   return (
     <div className="flex justify-between">
-      <span className="text-slate-500">{label}</span>
+      <span className="text-ink-muted">{label}</span>
       <span className={`font-medium ${tone}`}>{value}</span>
     </div>
   );

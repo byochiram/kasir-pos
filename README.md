@@ -108,6 +108,15 @@ dinaikkan ke versi terkini bila berasal dari backup lama, lalu datanya disalin m
 satu transaksi. Data lama otomatis disimpan sebagai `kasir.db.before-restore-<waktu>` di
 folder aplikasi dan file itu sendiri bisa diunggah kembali bila pemulihan ternyata keliru.
 
+**Mode gelap.** Tombol tema ada di bagian bawah sidebar dan berputar antara terang, gelap,
+dan mengikuti sistem. Pilihannya disimpan di browser dan diterapkan lewat skrip kecil di
+`<head>` sebelum halaman digambar, jadi tidak ada kedipan putih saat membuka aplikasi dalam
+gelap. Warna diambil dari token semantik (`bg-surface`, `text-ink`, `border-line`) yang
+didefinisikan sekali di `globals.css`, bukan varian `dark:` di tiap elemen. Palet grafik
+dipilih terpisah untuk tiap tema dan sudah diuji keterbacaan buta warna serta kontras
+minimal 3:1 terhadap latarnya masing-masing. Struk tetap dicetak hitam di atas putih apa pun
+tema layarnya.
+
 ## Struktur
 
 ```
@@ -129,6 +138,7 @@ src/
 │   ├── ui/            Toast, Modal, ConfirmDialog, Pagination, Field, Button, States
 │   ├── charts/        Bar chart SVG tanpa dependensi eksternal
 │   ├── AppProvider    Konteks sesi + pengaturan
+│   ├── ThemeToggle    Pemilih tema terang/gelap/sistem
 │   ├── Sidebar        Navigasi, difilter per role
 │   └── Receipt        Struk 80mm siap cetak
 ├── hooks/             useFetch, usePagedResource

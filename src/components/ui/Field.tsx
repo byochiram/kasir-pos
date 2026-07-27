@@ -4,9 +4,9 @@ import { useId } from 'react';
 import type { InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
 
 const BASE =
-  'w-full rounded-xl border px-3.5 py-2.5 text-sm outline-none transition-all placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50';
-const NORMAL = 'border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20';
-const INVALID = 'border-red-300 bg-red-50/40 focus:border-red-500 focus:ring-2 focus:ring-red-500/20';
+  'w-full rounded-xl border px-3.5 py-2.5 text-sm outline-none transition-all placeholder:text-ink-subtle disabled:cursor-not-allowed disabled:bg-surface-2';
+const NORMAL = 'border-line focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20';
+const INVALID = 'border-red-300 bg-red-50/40 dark:bg-red-500/10 focus:border-red-500 focus:ring-2 focus:ring-red-500/20';
 
 interface Wrapper {
   label: string;
@@ -25,7 +25,7 @@ function Shell({
 }: Wrapper & { id: string; children: React.ReactNode }) {
   return (
     <div>
-      <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-slate-700">
+      <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-ink">
         {label}
         {required && (
           <span className="ml-0.5 text-red-500" aria-hidden>
@@ -35,11 +35,11 @@ function Shell({
       </label>
       {children}
       {error ? (
-        <p id={`${id}-error`} className="mt-1 text-xs font-medium text-red-600">
+        <p id={`${id}-error`} className="mt-1 text-xs font-medium text-red-600 dark:text-red-300">
           {error}
         </p>
       ) : hint ? (
-        <p id={`${id}-hint`} className="mt-1 text-xs text-slate-500">
+        <p id={`${id}-hint`} className="mt-1 text-xs text-ink-muted">
           {hint}
         </p>
       ) : null}
@@ -87,7 +87,7 @@ export function SelectField({
         required={required}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? `${id}-error` : hint ? `${id}-hint` : undefined}
-        className={`${BASE} bg-white ${error ? INVALID : NORMAL} ${className}`}
+        className={`${BASE} bg-surface ${error ? INVALID : NORMAL} ${className}`}
         {...rest}
       >
         {children}

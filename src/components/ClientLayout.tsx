@@ -31,7 +31,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   // seolah user bukan admin dan menu/angka yang bergantung role berkedip salah.
   if (loading) {
     return (
-      <div className="flex h-dvh items-center justify-center bg-slate-50">
+      <div className="flex h-dvh items-center justify-center bg-surface-2">
         <PageLoader label="Memuat aplikasi..." />
       </div>
     );
@@ -40,7 +40,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   const fullBleed = matches(pathname, FULL_BLEED_PATHS);
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-slate-50">
+    <div className="flex h-dvh overflow-hidden bg-surface-2">
       <Sidebar />
       <main className="min-w-0 flex-1 overflow-y-auto">
         <div className={fullBleed ? 'h-full' : 'animate-fade-in mx-auto max-w-[1600px] p-4 sm:p-6'}>{children}</div>

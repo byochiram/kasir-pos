@@ -201,7 +201,7 @@ function SettingsForm({ settings }: { settings: Settings }) {
           </Section>
 
           <div className="flex flex-col-reverse items-center gap-2 sm:flex-row sm:justify-end">
-            {dirty && <span className="text-xs text-amber-600">Ada perubahan yang belum disimpan</span>}
+            {dirty && <span className="text-xs text-amber-600 dark:text-amber-300">Ada perubahan yang belum disimpan</span>}
             <Button
               variant="secondary"
               disabled={!dirty || saving}
@@ -217,31 +217,31 @@ function SettingsForm({ settings }: { settings: Settings }) {
         </div>
 
         <aside className="lg:sticky lg:top-4 lg:self-start">
-          <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
-            <h3 className="mb-3 text-sm font-bold text-slate-800">Pratinjau Struk</h3>
-            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/60 p-4 font-mono text-xs">
+          <div className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
+            <h3 className="mb-3 text-sm font-bold text-ink">Pratinjau Struk</h3>
+            <div className="rounded-xl border border-dashed border-line bg-surface-2 p-4 font-mono text-xs">
               <p className="text-center font-bold uppercase">{form.store_name || 'Nama Toko'}</p>
-              {form.store_address && <p className="text-center text-[10px] text-slate-500">{form.store_address}</p>}
-              {form.store_phone && <p className="text-center text-[10px] text-slate-500">Telp {form.store_phone}</p>}
-              <div className="my-2 border-t border-dashed border-slate-300" />
+              {form.store_address && <p className="text-center text-[10px] text-ink-muted">{form.store_address}</p>}
+              {form.store_phone && <p className="text-center text-[10px] text-ink-muted">Telp {form.store_phone}</p>}
+              <div className="my-2 border-t border-dashed border-line" />
               <div className="flex justify-between">
                 <span>Contoh Produk</span>
                 <span>{formatRupiah(100_000)}</span>
               </div>
-              <div className="my-2 border-t border-dashed border-slate-300" />
-              <div className="flex justify-between text-slate-600">
+              <div className="my-2 border-t border-dashed border-line" />
+              <div className="flex justify-between text-ink-muted">
                 <span>Subtotal</span>
                 <span>{formatRupiah(100_000)}</span>
               </div>
-              <div className="flex justify-between text-slate-600">
+              <div className="flex justify-between text-ink-muted">
                 <span>Pajak ({form.tax_rate || 0}%)</span>
                 <span>{formatRupiah(previewTax)}</span>
               </div>
-              <div className="mt-1 flex justify-between border-t border-slate-300 pt-1 font-bold">
+              <div className="mt-1 flex justify-between border-t border-line pt-1 font-bold">
                 <span>TOTAL</span>
                 <span>{formatRupiah(100_000 + previewTax)}</span>
               </div>
-              <p className="mt-3 text-center text-[10px] text-slate-500">
+              <p className="mt-3 text-center text-[10px] text-ink-muted">
                 {form.receipt_footer || 'Terima kasih atas kunjungan Anda!'}
               </p>
             </div>
@@ -269,9 +269,9 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm sm:p-5">
-      <h2 className="font-bold text-slate-800">{title}</h2>
-      {description && <p className="mt-0.5 text-sm text-slate-500">{description}</p>}
+    <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm sm:p-5">
+      <h2 className="font-bold text-ink">{title}</h2>
+      {description && <p className="mt-0.5 text-sm text-ink-muted">{description}</p>}
       <div className="mt-4 space-y-4">{children}</div>
     </section>
   );

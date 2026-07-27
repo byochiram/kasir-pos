@@ -24,19 +24,19 @@ export default function Receipt({ transaction, settings, tzOffset }: ReceiptProp
   const storeName = settings?.store_name ?? 'KasirApp';
 
   return (
-    <div id="receipt-print" className="font-mono text-[13px] leading-relaxed text-slate-800">
+    <div id="receipt-print" className="font-mono text-[13px] leading-relaxed text-ink">
       <div className="text-center">
         <h3 className="text-base font-bold uppercase">{storeName}</h3>
-        {settings?.store_address && <p className="text-[11px] text-slate-500">{settings.store_address}</p>}
-        {settings?.store_phone && <p className="text-[11px] text-slate-500">Telp {settings.store_phone}</p>}
+        {settings?.store_address && <p className="text-[11px] text-ink-muted">{settings.store_address}</p>}
+        {settings?.store_phone && <p className="text-[11px] text-ink-muted">Telp {settings.store_phone}</p>}
       </div>
 
-      <div className="my-2.5 border-t border-dashed border-slate-300" />
+      <div className="my-2.5 border-t border-dashed border-line" />
 
-      <div className="space-y-0.5 text-[11px] text-slate-600">
+      <div className="space-y-0.5 text-[11px] text-ink-muted">
         <div className="flex justify-between">
           <span>No. Invoice</span>
-          <span className="font-semibold text-slate-800">{transaction.invoice_no}</span>
+          <span className="font-semibold text-ink">{transaction.invoice_no}</span>
         </div>
         <div className="flex justify-between">
           <span>Waktu</span>
@@ -54,77 +54,77 @@ export default function Receipt({ transaction, settings, tzOffset }: ReceiptProp
         )}
       </div>
 
-      <div className="my-2.5 border-t border-dashed border-slate-300" />
+      <div className="my-2.5 border-t border-dashed border-line" />
 
       <div className="space-y-1.5">
         {transaction.items.map((item) => (
           <div key={item.id}>
             <p className="font-medium">{item.product_name}</p>
-            <div className="flex justify-between text-[12px] text-slate-600">
+            <div className="flex justify-between text-[12px] text-ink-muted">
               <span>
                 {item.quantity} × {formatRupiah(item.price)}
                 {item.discount > 0 && (
-                  <span className="text-red-600">
+                  <span className="text-red-600 dark:text-red-300">
                     {' '}
                     (disk {item.discount_type === 'percent' ? `${item.discount}%` : formatRupiah(item.discount)})
                   </span>
                 )}
               </span>
-              <span className="font-medium text-slate-800">{formatRupiah(item.subtotal)}</span>
+              <span className="font-medium text-ink">{formatRupiah(item.subtotal)}</span>
             </div>
           </div>
         ))}
       </div>
 
-      <div className="my-2.5 border-t border-dashed border-slate-300" />
+      <div className="my-2.5 border-t border-dashed border-line" />
 
       <div className="space-y-1 text-[12px]">
         <div className="flex justify-between">
-          <span className="text-slate-600">Subtotal</span>
+          <span className="text-ink-muted">Subtotal</span>
           <span>{formatRupiah(transaction.subtotal)}</span>
         </div>
         {transaction.discount_amount > 0 && (
-          <div className="flex justify-between text-red-600">
+          <div className="flex justify-between text-red-600 dark:text-red-300">
             <span>Diskon{transaction.discount_type === 'percent' ? ` (${transaction.discount}%)` : ''}</span>
             <span>-{formatRupiah(transaction.discount_amount)}</span>
           </div>
         )}
         {transaction.tax_amount > 0 && (
           <div className="flex justify-between">
-            <span className="text-slate-600">Pajak ({transaction.tax_rate}%)</span>
+            <span className="text-ink-muted">Pajak ({transaction.tax_rate}%)</span>
             <span>{formatRupiah(transaction.tax_amount)}</span>
           </div>
         )}
-        <div className="flex justify-between border-t border-slate-300 pt-1.5 text-sm font-bold">
+        <div className="flex justify-between border-t border-line pt-1.5 text-sm font-bold">
           <span>TOTAL</span>
           <span>{formatRupiah(transaction.total)}</span>
         </div>
       </div>
 
-      <div className="my-2.5 border-t border-dashed border-slate-300" />
+      <div className="my-2.5 border-t border-dashed border-line" />
 
       <div className="space-y-1 text-[12px]">
         <div className="flex justify-between">
-          <span className="text-slate-600">Metode</span>
+          <span className="text-ink-muted">Metode</span>
           <span>{PAYMENT_LABELS[transaction.payment_method] ?? transaction.payment_method}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-slate-600">Dibayar</span>
+          <span className="text-ink-muted">Dibayar</span>
           <span>{formatRupiah(transaction.amount_paid)}</span>
         </div>
         <div className="flex justify-between font-semibold">
-          <span className="text-slate-600">Kembalian</span>
+          <span className="text-ink-muted">Kembalian</span>
           <span>{formatRupiah(transaction.change)}</span>
         </div>
       </div>
 
       {transaction.status === 'voided' && (
-        <p className="mt-3 border border-red-300 py-1 text-center text-xs font-bold uppercase text-red-600">
+        <p className="mt-3 border border-red-300 py-1 text-center text-xs font-bold uppercase text-red-600 dark:text-red-300">
           Transaksi Dibatalkan
         </p>
       )}
 
-      <p className="mt-4 text-center text-[11px] text-slate-500">
+      <p className="mt-4 text-center text-[11px] text-ink-muted">
         {settings?.receipt_footer || 'Terima kasih atas kunjungan Anda!'}
       </p>
     </div>

@@ -65,16 +65,16 @@ export default function BackupPanel() {
   }
 
   return (
-    <section className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm sm:p-5">
-      <h2 className="font-bold text-slate-800">Backup & Pemulihan</h2>
-      <p className="mt-0.5 text-sm text-slate-500">
+    <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm sm:p-5">
+      <h2 className="font-bold text-ink">Backup & Pemulihan</h2>
+      <p className="mt-0.5 text-sm text-ink-muted">
         Simpan salinan seluruh data secara berkala, terutama sebelum tutup buku bulanan.
       </p>
 
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="rounded-xl border border-slate-200 p-3.5">
-          <p className="text-sm font-semibold text-slate-700">Unduh Backup</p>
-          <p className="mt-0.5 text-xs text-slate-500">
+        <div className="rounded-xl border border-line p-3.5">
+          <p className="text-sm font-semibold text-ink">Unduh Backup</p>
+          <p className="mt-0.5 text-xs text-ink-muted">
             Menghasilkan satu file berisi seluruh produk, transaksi, dan pengaturan.
           </p>
           <Button variant="secondary" size="sm" className="mt-3" loading={downloading} onClick={handleDownload}>
@@ -82,9 +82,9 @@ export default function BackupPanel() {
           </Button>
         </div>
 
-        <div className="rounded-xl border border-red-200 bg-red-50/40 p-3.5">
-          <p className="text-sm font-semibold text-red-800">Pulihkan dari Backup</p>
-          <p className="mt-0.5 text-xs text-red-700">
+        <div className="rounded-xl border border-red-200 dark:border-red-500/30 bg-red-50/40 dark:bg-red-500/10 p-3.5">
+          <p className="text-sm font-semibold text-red-800 dark:text-red-300">Pulihkan dari Backup</p>
+          <p className="mt-0.5 text-xs text-red-700 dark:text-red-300">
             Seluruh data saat ini akan diganti. Salinan otomatis dibuat sebelum penggantian.
           </p>
           <input

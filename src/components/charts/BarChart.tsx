@@ -44,7 +44,7 @@ export default function BarChart({ labels, series, formatValue, height = 200, em
       {series.length > 1 && (
         <div className="mb-3 flex flex-wrap items-center gap-4">
           {series.map((s) => (
-            <span key={s.key} className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+            <span key={s.key} className="flex items-center gap-1.5 text-xs font-medium text-ink-muted">
               <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: s.color }} aria-hidden />
               {s.label}
             </span>
@@ -53,7 +53,7 @@ export default function BarChart({ labels, series, formatValue, height = 200, em
       )}
 
       {!hasData ? (
-        <div className="flex items-center justify-center rounded-xl bg-slate-50 text-sm text-slate-400" style={{ height }}>
+        <div className="flex items-center justify-center rounded-xl bg-surface-2 text-sm text-ink-subtle" style={{ height }}>
           {emptyLabel}
         </div>
       ) : (
@@ -75,7 +75,7 @@ export default function BarChart({ labels, series, formatValue, height = 200, em
                   x2={100}
                   y1={y}
                   y2={y}
-                  stroke={tick === 0 ? '#c3c2b7' : '#e1e0d9'}
+                  stroke={tick === 0 ? 'var(--chart-axis)' : 'var(--chart-grid)'}
                   strokeWidth={tick === 0 ? 1 : 0.5}
                   vectorEffect="non-scaling-stroke"
                 />
@@ -97,8 +97,9 @@ export default function BarChart({ labels, series, formatValue, height = 200, em
                       y={PADDING.top}
                       width={groupWidth}
                       height={plotHeight}
-                      fill="#0b0b0b"
-                      opacity={0.04}
+                      fill="currentColor"
+                      className="text-ink"
+                      opacity={0.05}
                     />
                   )}
                   {series.map((s, seriesIndex) => {
@@ -142,7 +143,7 @@ export default function BarChart({ labels, series, formatValue, height = 200, em
               <span
                 key={label}
                 className={`flex-1 truncate text-center text-[10px] ${
-                  hover === index ? 'font-semibold text-slate-700' : 'text-slate-400'
+                  hover === index ? 'font-semibold text-ink' : 'text-ink-subtle'
                 }`}
               >
                 {label}
@@ -152,7 +153,7 @@ export default function BarChart({ labels, series, formatValue, height = 200, em
 
           {hover !== null && (
             <div
-              className="pointer-events-none absolute -top-1 z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs text-white shadow-lg"
+              className="pointer-events-none absolute -top-1 z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg border border-white/10 bg-slate-900 px-2.5 py-1.5 text-xs text-white shadow-lg dark:bg-slate-950"
               style={{ left: `${((hover + 0.5) / groupCount) * 100}%` }}
               role="tooltip"
             >
@@ -171,10 +172,10 @@ export default function BarChart({ labels, series, formatValue, height = 200, em
 
       {/* Tabel pendamping: identitas data tidak pernah bergantung pada warna saja. */}
       <details className="mt-3">
-        <summary className="cursor-pointer text-xs text-slate-500 hover:text-slate-700">Lihat sebagai tabel</summary>
+        <summary className="cursor-pointer text-xs text-ink-muted hover:text-ink">Lihat sebagai tabel</summary>
         <div className="mt-2 overflow-x-auto">
           <table className="w-full text-xs">
-            <thead className="text-left text-slate-500">
+            <thead className="text-left text-ink-muted">
               <tr>
                 <th className="py-1 pr-3 font-semibold">Periode</th>
                 {series.map((s) => (
@@ -184,12 +185,12 @@ export default function BarChart({ labels, series, formatValue, height = 200, em
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-line-soft">
               {labels.map((label, index) => (
                 <tr key={label}>
-                  <td className="py-1 pr-3 text-slate-600">{label}</td>
+                  <td className="py-1 pr-3 text-ink-muted">{label}</td>
                   {series.map((s) => (
-                    <td key={s.key} className="py-1 pr-3 text-right tabular-nums text-slate-700">
+                    <td key={s.key} className="py-1 pr-3 text-right tabular-nums text-ink">
                       {formatValue(s.values[index] ?? 0)}
                     </td>
                   ))}

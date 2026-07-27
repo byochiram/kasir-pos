@@ -136,15 +136,15 @@ export default function CustomersPage() {
         }
       />
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm">
-        <div className="border-b border-slate-200/70 p-3">
+      <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
+        <div className="border-b border-line p-3">
           <input
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Cari nama, telepon, atau email..."
             aria-label="Cari pelanggan"
-            className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+            className="w-full rounded-xl border border-line px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
           />
         </div>
 
@@ -165,7 +165,7 @@ export default function CustomersPage() {
           <>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[760px] text-sm">
-                <thead className="bg-slate-50/70 text-left text-xs uppercase tracking-wide text-slate-500">
+                <thead className="bg-surface-2 text-left text-xs uppercase tracking-wide text-ink-muted">
                   <tr>
                     <th className="px-4 py-3 font-semibold">Nama</th>
                     <th className="px-4 py-3 font-semibold">Kontak</th>
@@ -175,33 +175,33 @@ export default function CustomersPage() {
                     <th className="px-4 py-3 text-right font-semibold">Aksi</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-line-soft">
                   {customers.map((customer) => (
-                    <tr key={customer.id} className="transition-colors hover:bg-slate-50/60">
+                    <tr key={customer.id} className="transition-colors hover:bg-surface-2">
                       <td className="px-4 py-3">
                         <button
                           type="button"
                           onClick={() => openDetail(customer)}
-                          className="font-medium text-slate-800 hover:text-emerald-600 hover:underline"
+                          className="font-medium text-ink hover:text-emerald-600 dark:hover:text-emerald-300 hover:underline"
                         >
                           {customer.name}
                         </button>
                         {customer.address && (
-                          <p className="mt-0.5 max-w-xs truncate text-xs text-slate-400" title={customer.address}>
+                          <p className="mt-0.5 max-w-xs truncate text-xs text-ink-subtle" title={customer.address}>
                             {customer.address}
                           </p>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-slate-600">
+                      <td className="px-4 py-3 text-ink-muted">
                         <p>{customer.phone || '-'}</p>
-                        {customer.email && <p className="text-xs text-slate-400">{customer.email}</p>}
+                        {customer.email && <p className="text-xs text-ink-subtle">{customer.email}</p>}
                       </td>
-                      <td className="px-4 py-3 text-right text-slate-600">{formatNumber(customer.visit_count)}×</td>
-                      <td className="px-4 py-3 text-right font-semibold text-slate-800">
+                      <td className="px-4 py-3 text-right text-ink-muted">{formatNumber(customer.visit_count)}×</td>
+                      <td className="px-4 py-3 text-right font-semibold text-ink">
                         {formatRupiah(customer.total_spent)}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                        <span className="rounded-full bg-amber-50 dark:bg-amber-500/15 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:text-amber-300">
                           {formatNumber(customer.points)}
                         </span>
                       </td>
@@ -212,7 +212,7 @@ export default function CustomersPage() {
                             onClick={() => openEdit(customer)}
                             title="Edit"
                             aria-label={`Edit ${customer.name}`}
-                            className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+                            className="rounded-lg p-1.5 text-ink-muted transition-colors hover:bg-surface-3 hover:text-ink"
                           >
                             ✎
                           </button>
@@ -222,7 +222,7 @@ export default function CustomersPage() {
                               onClick={() => setDeleting(customer)}
                               title="Hapus"
                               aria-label={`Hapus ${customer.name}`}
-                              className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                              className="rounded-lg p-1.5 text-ink-subtle transition-colors hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-600 dark:hover:text-red-300"
                             >
                               🗑
                             </button>
@@ -314,7 +314,7 @@ export default function CustomersPage() {
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[480px] text-sm">
-                  <thead className="bg-slate-50/70 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <thead className="bg-surface-2 text-left text-xs uppercase tracking-wide text-ink-muted">
                     <tr>
                       <th className="px-3 py-2 font-semibold">Invoice</th>
                       <th className="px-3 py-2 font-semibold">Waktu</th>
@@ -322,22 +322,22 @@ export default function CustomersPage() {
                       <th className="px-3 py-2 font-semibold">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-line-soft">
                     {detailTransactions.map((transaction) => (
                       <tr key={transaction.id}>
-                        <td className="px-3 py-2 font-mono text-xs text-slate-600">{transaction.invoice_no}</td>
-                        <td className="whitespace-nowrap px-3 py-2 text-slate-500">
+                        <td className="px-3 py-2 font-mono text-xs text-ink-muted">{transaction.invoice_no}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-ink-muted">
                           {formatDateTime(transaction.created_at, tzOffset)}
                         </td>
-                        <td className="px-3 py-2 text-right font-semibold text-slate-800">
+                        <td className="px-3 py-2 text-right font-semibold text-ink">
                           {formatRupiah(transaction.total)}
                         </td>
                         <td className="px-3 py-2">
                           <span
                             className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
                               transaction.status === 'voided'
-                                ? 'bg-red-50 text-red-600'
-                                : 'bg-emerald-50 text-emerald-700'
+                                ? 'bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300'
+                                : 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
                             }`}
                           >
                             {transaction.status === 'voided' ? 'Dibatalkan' : 'Selesai'}
@@ -374,9 +374,9 @@ export default function CustomersPage() {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-3">
-      <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-1 truncate text-base font-bold text-slate-800">{value}</p>
+    <div className="rounded-xl border border-line bg-surface-2 p-3">
+      <p className="text-xs uppercase tracking-wide text-ink-muted">{label}</p>
+      <p className="mt-1 truncate text-base font-bold text-ink">{value}</p>
     </div>
   );
 }
