@@ -1,24 +1,42 @@
 # Deploy ke VPS
 
-Panduan ini mengasumsikan VPS Linux yang sudah menjalankan proyek lain, dengan
-Docker dan nginx terpasang. Semua nilai contoh (port, domain) boleh diganti.
+Panduan ini menjalankan aplikasi sebagai **layanan systemd** di belakang nginx.
+Itulah cara instance produksinya berjalan sekarang, di VPS 2 GB yang juga
+menjalankan tiga proyek lain. Berkas contoh ada di `deploy/`.
+
+Kalau Anda lebih suka Docker, `Dockerfile` dan `docker-compose.yml` juga
+tersedia dan setara secara fungsi — lihat [Alternatif: Docker](#alternatif-docker)
+di bagian bawah.
 
 ## Kenapa VPS, bukan Vercel
 
 Aplikasi ini menyimpan data di SQLite — sebuah file di disk. Platform serverless
 seperti Vercel memberi filesystem yang hanya bisa dibaca dan hilang setiap
 invocation, jadi setiap transaksi akan lenyap beberapa detik setelah tersimpan.
-Server yang selalu hidup dengan volume persisten menyelesaikan itu, sekaligus
+Server yang selalu hidup dengan disk persisten menyelesaikan itu, sekaligus
 menyediakan alamat tetap untuk webhook pembayaran.
 
-## 0. Pastikan RAM cukup untuk proses build
+## 0. Prasyarat
 
-Aplikasi yang sudah jalan hanya memakai sekitar **90 MB**, jadi ringan. Yang berat
-adalah proses **build**-nya: `next build` plus kompilasi `better-sqlite3` bisa
-menyentuh 1 GB lebih. Di VPS 2 GB yang sudah menjalankan proyek lain, build bisa
-mati terbunuh OOM di tengah jalan.
+```bash
+node --version   # butuh 20 atau lebih baru
+nginx -v
+certbot --version
+```
 
-Periksa dulu sisa memori dan swap:
+Dua hal yang mudah terlewat:
+
+**`better-sqlite3` dikompilasi dari sumber.** Tidak ada prebuild untuk setiap
+kombinasi Node/OS, jadi siapkan toolchain-nya lebih dulu — tanpa ini `npm ci`
+berhenti dengan `gyp ERR! not ok`:
+
+```bash
+sudo apt-get install -y build-essential
+```
+
+**Build jauh lebih berat daripada aplikasinya.** Proses yang sudah jalan hanya
+memakai sekitar **100 MB**, tapi `next build` plus kompilasi native bisa
+menyentuh 1 GB. Periksa dulu:
 
 ```bash
 free -h
@@ -34,120 +52,142 @@ sudo swapon /swapfile
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ```
 
-Swap hanya dipakai saat build; setelah container jalan, pemakaian kembali ringan.
-
-Alternatif kalau tidak mau menambah swap: build image di komputer lokal, lalu
-kirim ke VPS.
+## 1. Ambil kode
 
 ```bash
-# di komputer lokal
-docker build -t kasir-app .
-docker save kasir-app | gzip | ssh user@43.157.203.219 'gunzip | docker load'
+sudo mkdir -p /var/www/kasir
+sudo chown "$USER:$USER" /var/www/kasir
+git clone --branch main https://github.com/byochiram/kasir-pos.git /var/www/kasir
+cd /var/www/kasir
+mkdir -p data
 ```
 
-## 1. Siapkan berkas
+## 2. Konfigurasi
+
+Buat `/var/www/kasir/.env` — mode 600, jangan pernah di-commit:
 
 ```bash
-git clone https://github.com/byochiram/kasir-pos.git
-cd kasir-pos
-cp .env.example .env.production
+umask 077
+cat > .env <<CFG
+JWT_SECRET=$(openssl rand -hex 32)
+NODE_ENV=production
+PORT=3021
+HOSTNAME=127.0.0.1
+DATABASE_PATH=/var/www/kasir/data/kasir.db
+SEED_ADMIN_PASSWORD=ganti-ini
+SEED_KASIR_PASSWORD=ganti-ini-juga
+MIDTRANS_SERVER_KEY=
+MIDTRANS_IS_PRODUCTION=false
+MIDTRANS_QRIS_ACQUIRER="airpay shopee"
+CFG
 ```
 
-Isi `.env.production`:
+Kedua `SEED_*` hanya dipakai saat database masih kosong.
+
+> Nilai ber-spasi **harus diberi tanda kutip**. Berkas ini dibaca systemd lewat
+> `EnvironmentFile`, dan systemd tidak memperlakukan spasi seperti shell.
+> Baik systemd maupun dotenv sama-sama melepas tanda kutipnya.
+
+`HOSTNAME=127.0.0.1` membuat aplikasi hanya bisa dihubungi dari mesin itu
+sendiri; internet masuk lewat nginx, bukan langsung.
+
+## 3. Build
 
 ```bash
-JWT_SECRET=$(node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))")
+npm ci                       # bukan --omit=dev: build butuh typescript & tailwind
+npm run build
 ```
 
-Ganti juga `SEED_ADMIN_PASSWORD` dan `SEED_KASIR_PASSWORD` sebelum menjalankan
-pertama kali — keduanya hanya dipakai saat database masih kosong.
-
-## 2. Jalankan
+`next.config.ts` memakai `output: 'standalone'`, jadi hasilnya bundel mandiri di
+`.next/standalone`. Bundel itu **tidak** menyertakan aset statis, jadi salin
+sendiri setiap habis build:
 
 ```bash
-docker compose up -d --build
-docker compose logs -f kasir-app
+cp -r .next/static  .next/standalone/.next/static
+cp -r public        .next/standalone/public   # kalau ada
 ```
 
-Container mengikat diri ke `127.0.0.1:3021`, **tidak** langsung ke internet.
-Kalau port itu bentrok dengan proyek lain, ubah di `docker-compose.yml`.
-
-Cek port yang sedang dipakai di VPS:
+## 4. Layanan systemd
 
 ```bash
-ss -tlnp | grep LISTEN
+sudo cp deploy/kasir.service /etc/systemd/system/kasir.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now kasir
 ```
 
-## 3. Arahkan subdomain
+Periksa:
 
-Tambahkan satu **A record** di pengelola DNS domain Anda:
+```bash
+systemctl status kasir
+curl -i http://127.0.0.1:3021/login          # 200
+curl -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3021/api/products   # 401
+journalctl -u kasir -f
+```
 
-| Jenis | Nama    | Konten            | TTL   |
-|-------|---------|-------------------|-------|
-| A     | `kasir` | IP publik VPS     | 14400 |
+Unit-nya berjalan sebagai user biasa dengan `ProtectSystem=strict`; satu-satunya
+direktori yang boleh ditulis adalah `data/`. Kalau Anda memindahkan
+`DATABASE_PATH`, ubah juga `ReadWritePaths` — kalau tidak, aplikasi gagal start
+dengan *read-only file system*.
 
-Kalau domainnya sudah punya A record lain yang menunjuk IP yang sama (misalnya
-untuk proyek lain di VPS itu), cukup tambahkan satu baris baru — jangan diubah
-yang lama. Pemisahan antar proyek terjadi di nginx lewat `server_name`, bukan di DNS.
+## 5. Subdomain dan nginx
 
-Tunggu propagasi lalu pastikan sudah mengarah:
+Tambahkan satu **A record** di pengelola DNS:
+
+| Jenis | Nama    | Konten        | TTL   |
+|-------|---------|---------------|-------|
+| A     | `kasir` | IP publik VPS | 14400 |
+
+Kalau domainnya sudah punya A record lain ke IP yang sama, cukup tambah satu
+baris — jangan ubah yang lama. Pemisahan antar proyek terjadi di nginx lewat
+`server_name`, bukan di DNS. Pastikan sudah menyebar sebelum lanjut:
 
 ```bash
 dig +short kasir.domain-anda.com
 ```
 
-## 4. Reverse proxy nginx
-
-Buat `/etc/nginx/sites-available/kasir`:
-
-```nginx
-server {
-    listen 80;
-    server_name kasir.domain-anda.com;
-
-    location / {
-        proxy_pass http://127.0.0.1:3021;
-        proxy_http_version 1.1;
-        proxy_set_header Host              $host;
-        proxy_set_header X-Real-IP         $remote_addr;
-        # Dipakai aplikasi untuk rate limit login; tanpa ini semua request
-        # terlihat berasal dari alamat yang sama.
-        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade           $http_upgrade;
-        proxy_set_header Connection        'upgrade';
-    }
-
-    # Unggahan restore backup bisa besar; default nginx hanya 1 MB.
-    client_max_body_size 210M;
-}
-```
-
-Aktifkan dan pasang HTTPS:
+Lalu pasang reverse proxy:
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/kasir /etc/nginx/sites-enabled/
+sudo cp deploy/nginx.conf /etc/nginx/sites-available/kasir
+sudo sed -i 's/kasir.domain-anda.com/kasir.domain-anda-sungguhan.com/' /etc/nginx/sites-available/kasir
+sudo ln -sfn /etc/nginx/sites-available/kasir /etc/nginx/sites-enabled/kasir
 sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d kasir.domain-anda.com
 ```
 
-Arahkan dulu A record subdomain ke IP VPS sebelum menjalankan certbot.
+## 6. HTTPS
 
-## 5. Aktifkan pembayaran QRIS
+```bash
+sudo certbot --nginx -d kasir.domain-anda.com --redirect
+```
+
+Certbot menyisipkan blok `listen 443 ssl` dan pengalihan dari port 80 ke berkas
+tadi, lalu memasang timer pembaruan otomatis. HTTPS bukan opsional di sini:
+cookie sesi memakai atribut `Secure` saat `NODE_ENV=production`, jadi lewat HTTP
+biasa browser tidak akan menyimpannya dan login selalu gagal.
+
+Verifikasi:
+
+```bash
+curl -sI https://kasir.domain-anda.com/login | head -1
+```
+
+> Kalau tepat setelah `reload` Anda dapat 404 dari vhost lain, ulangi sebentar
+> lagi — worker lama masih melayani beberapa saat sesudah reload.
+
+## 7. Aktifkan pembayaran QRIS
 
 Sandbox Midtrans tidak memerlukan verifikasi badan usaha.
 
 1. Daftar di <https://dashboard.sandbox.midtrans.com>
-2. Pastikan pengalih **Environment** di sidebar dashboard menunjuk **Sandbox**,
-   lalu **Settings → Access Keys** → salin *Server Key* ke `MIDTRANS_SERVER_KEY`
-   di `.env.production`.
+2. Pastikan pengalih **Environment** di sidebar menunjuk **Sandbox**, lalu
+   **Settings → Access Keys** → salin *Server Key* ke `MIDTRANS_SERVER_KEY`.
 
    Yang menentukan aplikasi menembak sandbox atau produksi adalah
    `MIDTRANS_IS_PRODUCTION`, bukan bentuk kuncinya — jadi pastikan keduanya
    cocok: kunci sandbox dengan `MIDTRANS_IS_PRODUCTION=false`.
 3. **Settings → Configuration → Payment Notification URL**:
    `https://kasir.domain-anda.com/api/payments/midtrans/webhook`
-4. Terapkan: `docker compose up -d`
+4. `sudo systemctl restart kasir`
 
 Menguji tanpa uang asli: buat transaksi QRIS di layar kasir, buka panel
 **"Mode sandbox — bayar lewat simulator"** di bawah QR, salin URL-nya, lalu
@@ -158,7 +198,7 @@ struk dalam beberapa detik.
 > **Kalau simulator menjawab "Transaction is unsuccessful"** padahal tagihan
 > berhasil dibuat dan QR tampil normal, kemungkinan besar akun sandbox Anda
 > tidak diaktifkan untuk acquirer yang dipakai. Ganti `MIDTRANS_QRIS_ACQUIRER`
-> ke `airpay shopee` (atau sebaliknya ke `gopay`) lalu jalankan ulang.
+> ke `airpay shopee` (atau sebaliknya ke `gopay`) lalu restart.
 >
 > Cara memastikannya tanpa melibatkan aplikasi: buat dua tagihan uji langsung
 > ke `/v2/charge` dengan masing-masing acquirer, lalu coba bayar keduanya di
@@ -166,33 +206,36 @@ struk dalam beberapa detik.
 
 Endpoint webhook sengaja terbuka tanpa sesi — pemanggilnya server Midtrans,
 bukan browser. Keasliannya diperiksa lewat tanda tangan SHA-512, dan notifikasi
-dengan nominal yang tidak cocok akan ditolak.
+dengan nominal yang tidak cocok akan ditolak. Notifikasi palsu tetap dijawab
+`200` supaya Midtrans tidak mengulanginya; badan responsnya menyebut alasan
+penolakan.
 
-## 6. Perbarui versi
+## 8. Perbarui versi
 
 ```bash
-git pull
-docker compose up -d --build
+/var/www/kasir/scripts/deploy.sh
 ```
 
-Migrasi database berjalan otomatis saat container pertama kali melayani request.
-Data di volume tidak tersentuh oleh rebuild.
+Skrip itu menarik perubahan, build, menyalin ulang aset standalone, restart, dan
+menunggu sampai layanan merespons. Kalau ada langkah yang gagal ia berhenti
+sebelum restart, jadi versi lama tetap melayani. Migrasi database berjalan
+otomatis saat request pertama; isi `data/` tidak tersentuh oleh rebuild.
 
 ## Backup
 
 Cara termudah lewat aplikasi: **Pengaturan → Backup & Pemulihan → Unduh**.
+Tombol itu memakai `VACUUM INTO` sehingga hasilnya dijamin utuh.
 
-Untuk backup terjadwal dari sisi server:
+Untuk backup terjadwal dari sisi server, jangan sekadar `cp` — menyalin file
+saat aplikasi sedang menulis bisa menghasilkan salinan yang tertinggal WAL-nya.
+Pakai perintah SQLite yang aman:
 
 ```bash
-# Salin file database keluar dari volume
-docker compose cp kasir-app:/data/kasir.db ./backup-$(date +%F).db
+sqlite3 /var/www/kasir/data/kasir.db \
+  ".backup '/var/backups/kasir-$(date +%F).db'"
 ```
 
-Perlu diingat, menyalin file saat aplikasi sedang menulis bisa menghasilkan
-salinan yang tertinggal — tombol Unduh di aplikasi memakai `VACUUM INTO`
-sehingga hasilnya dijamin utuh. Untuk backup otomatis harian, jadwalkan
-`docker compose exec` yang menjalankan perintah serupa saat toko tutup.
+Jadwalkan lewat cron saat toko tutup.
 
 ## Catatan operasional
 
@@ -201,4 +244,23 @@ sehingga hasilnya dijamin utuh. Untuk backup otomatis harian, jadwalkan
   memori proses.
 - Jaga sisa disk untuk file `kasir.db.before-restore-*` yang dibuat otomatis
   setiap kali memulihkan backup.
-- Log dibatasi 3 berkas × 10 MB lewat konfigurasi di `docker-compose.yml`.
+- Log masuk ke journald: `journalctl -u kasir`. Batasi ukurannya lewat
+  `/etc/systemd/journald.conf` kalau perlu.
+
+## Alternatif: Docker
+
+`Dockerfile` dan `docker-compose.yml` menghasilkan susunan yang setara.
+Bedanya hanya langkah 3–4 di atas:
+
+```bash
+cp .env .env.production
+docker compose up -d --build
+docker compose logs -f kasir-app
+```
+
+Container mengikat diri ke `127.0.0.1:3021`, jadi konfigurasi nginx di langkah 5
+berlaku apa adanya. Pembaruan: `git pull && docker compose up -d --build`.
+
+Di VPS kecil yang sudah menjalankan proyek lain, jalur systemd lebih hemat —
+tidak ada daemon tambahan, dan `next build` di host bisa memanfaatkan swap yang
+sudah ada.

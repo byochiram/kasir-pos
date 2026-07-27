@@ -4,6 +4,10 @@ Aplikasi kasir untuk toko/warung: transaksi, manajemen stok dengan jejak audit, 
 berpoin, pengeluaran, dan laporan laba. Dibangun dengan Next.js 16 (App Router), React 19,
 TypeScript, Tailwind CSS 4, dan SQLite lewat better-sqlite3.
 
+**Demo langsung: <https://kasir.kakros.id>** — masuk dengan salah satu akun bawaan di bawah.
+Pembayaran memakai Midtrans **sandbox**, jadi QRIS dan Virtual Account bisa dicoba tanpa
+uang sungguhan.
+
 ## Menjalankan
 
 ```bash

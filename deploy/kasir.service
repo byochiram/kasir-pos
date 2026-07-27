@@ -1,0 +1,29 @@
+[Unit]
+Description=Kasir POS (Next.js standalone)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+# Bundel standalone berdiri sendiri: server.js plus node_modules seperlunya.
+WorkingDirectory=/var/www/kasir/.next/standalone
+ExecStart=/usr/bin/node server.js
+# Env datang dari systemd, bukan dotenv — cwd standalone berbeda dari letak .env.
+EnvironmentFile=/var/www/kasir/.env
+Restart=always
+RestartSec=5
+SyslogIdentifier=kasir
+
+# Pengetatan. Database satu-satunya yang perlu ditulis.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/www/kasir/data
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target
