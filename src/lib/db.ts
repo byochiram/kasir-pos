@@ -365,6 +365,14 @@ const migrations: { version: number; up: (db: Database.Database) => void }[] = [
       `);
     },
   },
+  {
+    // Virtual Account: transfer bank yang dikonfirmasi gateway.
+    version: 5,
+    up: (db) => {
+      addColumn(db, 'transactions', 'payment_va_bank', 'TEXT');
+      addColumn(db, 'transactions', 'payment_va_number', 'TEXT');
+    },
+  },
 ];
 
 /**
@@ -1212,6 +1220,19 @@ export function attachPaymentDetails(
  * invoice, dan notifikasi bisa saja tiba sebelum payment_ref sempat tersimpan —
  * atau setelah proses sempat mati di antara pembuatan QR dan penyimpanannya.
  */
+/** Menyimpan nomor VA setelah gateway menerbitkannya. */
+export function attachVaDetails(
+  transactionId: string,
+  details: { orderId: string; bank: string; vaNumber: string; expiresAt: string },
+): void {
+  getDb()
+    .prepare(
+      `UPDATE transactions SET payment_ref = ?, payment_va_bank = ?, payment_va_number = ?,
+       payment_expires_at = ?, payment_status = 'pending' WHERE id = ?`,
+    )
+    .run(details.orderId, details.bank, details.vaNumber, details.expiresAt, transactionId);
+}
+
 export function getTransactionByPaymentRef(orderId: string): TransactionWithRelations | null {
   const row = getDb()
     .prepare('SELECT id FROM transactions WHERE payment_ref = ? OR invoice_no = ? LIMIT 1')

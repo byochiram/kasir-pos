@@ -3,37 +3,18 @@ import { requireAuth } from '@/lib/auth';
 import { attachPaymentDetails, getTransactionById, recordPaymentEvent } from '@/lib/db';
 import { badRequest, conflict, forbidden, json, notFound, readBody, route } from '@/lib/http';
 import { chargeQris, isSandbox } from '@/lib/midtrans';
+import { singleFlight } from '@/lib/single-flight';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const schema = z.object({ transaction_id: z.string().min(1) });
 
-/**
- * Permintaan pembuatan QR yang sedang berjalan, dikunci per transaksi.
- *
- * Tanpa ini, dua permintaan yang datang bersamaan untuk transaksi yang sama
- * akan sama-sama menembak gateway dan yang kedua ditolak sebagai order_id
- * duplikat — lalu error itulah yang tampil di layar kasir, padahal tagihannya
- * sudah berhasil dibuat. Pemicunya banyak: React StrictMode di mode development
- * menjalankan effect dua kali, kasir menekan tombol dua kali, atau dua tab
- * terbuka bersamaan.
- */
-const inFlight = new Map<string, Promise<QrisResult>>();
-
 interface QrisResult {
   qr_url: string;
   expires_at: string;
   sandbox: boolean;
   reused: boolean;
-}
-
-function once(key: string, work: () => Promise<QrisResult>): Promise<QrisResult> {
-  const running = inFlight.get(key);
-  if (running) return running;
-  const promise = work().finally(() => inFlight.delete(key));
-  inFlight.set(key, promise);
-  return promise;
 }
 
 /** Membuatkan kode QR untuk transaksi yang sudah dibuat dan berstatus pending. */
@@ -65,7 +46,7 @@ export const POST = route(async (request) => {
     });
   }
 
-  const result = await once(tx.id, async () => {
+  const result = await singleFlight<QrisResult>(`qris:${tx.id}`, async () => {
     // Dibaca ulang di dalam kunci: permintaan sebelumnya mungkin baru saja
     // menyimpan QR-nya beberapa milidetik lalu.
     const fresh = getTransactionById(tx.id);

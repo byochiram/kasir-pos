@@ -108,11 +108,29 @@ dinaikkan ke versi terkini bila berasal dari backup lama, lalu datanya disalin m
 satu transaksi. Data lama otomatis disimpan sebagai `kasir.db.before-restore-<waktu>` di
 folder aplikasi dan file itu sendiri bisa diunggah kembali bila pemulihan ternyata keliru.
 
-**Pembayaran QRIS.** Metode QRIS diproses lewat Midtrans Core API, bukan sekadar dicatat.
+**Metode pembayaran.** Dua metode dikonfirmasi gateway, sisanya dicatat manual:
+
+| Metode | Perlakuan |
+|---|---|
+| Tunai | Manual — kasir menghitung uang, ada kembalian |
+| QRIS | Gateway (Midtrans Core API) |
+| Transfer VA | Gateway — nomor Virtual Account BCA/BNI/BRI/Permata/CIMB |
+| Debit | Manual — kartu diproses mesin EDC bank, di luar aplikasi |
+
+Debit sengaja tidak diintegrasikan: di toko fisik kartu diproses lewat EDC milik bank,
+perangkat terpisah yang uangnya tidak lewat Midtrans. API kartu Midtrans ditujukan untuk
+belanja online (*card-not-present*), yang justru lebih lambat dan lebih mahal untuk kasir.
+
+**Pembayaran QRIS dan Virtual Account.** Keduanya diproses lewat Midtrans Core API, bukan sekadar dicatat.
 Saat kasir menekan Bayar, transaksi dibuat berstatus `pending` — stok sudah dipotong agar
 barang yang sama tidak terjual dua kali, tapi belum dihitung sebagai omzet dan poin pelanggan
-belum diberikan. Kode QR ditampilkan beserta hitung mundur; begitu dana masuk, transaksi jadi
-`completed` dan struk muncul otomatis.
+belum diberikan. Kode QR atau nomor VA ditampilkan beserta hitung mundur; begitu dana masuk,
+transaksi jadi `completed` dan struk muncul otomatis. QRIS berlaku 15 menit, VA 30 menit —
+lebih pendek dari bawaan Midtrans yang 24 jam, karena stok tidak boleh tersandera seharian.
+
+Pembuatan tagihan bersifat *single-flight*: permintaan serentak untuk transaksi yang sama
+digabung menjadi satu, karena gateway menolak `order_id` duplikat dan error itu akan tampil
+di layar kasir meski tagihannya sebenarnya sudah dibuat.
 
 Konfirmasi datang lewat **webhook** yang diverifikasi dengan tanda tangan SHA-512 — tanpa itu,
 siapa pun bisa mengirim JSON "sudah lunas" ke endpoint yang memang terbuka. Notifikasi dengan

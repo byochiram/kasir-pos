@@ -4,19 +4,32 @@ export type Role = (typeof ROLES)[number];
 
 /** `qris_online` diproses lewat payment gateway; `qris` adalah stiker statis
  *  yang dicatat manual oleh kasir. */
-export const PAYMENT_METHODS = ['cash', 'qris', 'qris_online', 'transfer', 'debit'] as const;
+export const PAYMENT_METHODS = ['cash', 'qris', 'qris_online', 'transfer', 'va', 'debit'] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   cash: 'Tunai',
   qris: 'QRIS (manual)',
   qris_online: 'QRIS',
-  transfer: 'Transfer',
+  transfer: 'Transfer (manual)',
+  va: 'Transfer VA',
   debit: 'Debit',
 };
 
 /** Metode yang uangnya dikonfirmasi gateway, bukan dipercaya begitu saja. */
-export const GATEWAY_METHODS: readonly PaymentMethod[] = ['qris_online'];
+export const GATEWAY_METHODS: readonly PaymentMethod[] = ['qris_online', 'va'];
+
+/** Bank yang mendukung Virtual Account lewat Midtrans Core API. */
+export const VA_BANKS = ['bca', 'bni', 'bri', 'permata', 'cimb'] as const;
+export type VaBank = (typeof VA_BANKS)[number];
+
+export const VA_BANK_LABELS: Record<VaBank, string> = {
+  bca: 'BCA',
+  bni: 'BNI',
+  bri: 'BRI',
+  permata: 'Permata',
+  cimb: 'CIMB Niaga',
+};
 
 export const PAYMENT_STATUSES = ['unpaid', 'pending', 'paid', 'expired', 'failed'] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
@@ -153,6 +166,8 @@ export interface Transaction {
   /** order_id yang dikirim ke gateway; sama dengan invoice_no. */
   payment_ref: string | null;
   payment_qr_url: string | null;
+  payment_va_bank: string | null;
+  payment_va_number: string | null;
   payment_expires_at: string | null;
   paid_at: string | null;
   voided_at: string | null;

@@ -10,9 +10,19 @@ import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Receipt from '@/components/Receipt';
 import QrisPaymentDialog from '@/components/QrisPaymentDialog';
+import VaPaymentDialog from '@/components/VaPaymentDialog';
 import { TextField } from '@/components/ui/Field';
 import { EmptyState, PageLoader } from '@/components/ui/States';
-import type { Customer, DiscountType, Paginated, Product, TransactionWithRelations } from '@/lib/types';
+import {
+  VA_BANKS,
+  VA_BANK_LABELS,
+  type Customer,
+  type DiscountType,
+  type Paginated,
+  type Product,
+  type TransactionWithRelations,
+  type VaBank,
+} from '@/lib/types';
 
 interface CartLine {
   productId: string;
@@ -25,7 +35,8 @@ const PAYMENT_OPTIONS = [
   { key: 'cash', label: 'Tunai', icon: '💵' },
   // Diproses gateway: dana dikonfirmasi otomatis sebelum transaksi dianggap sah.
   { key: 'qris_online', label: 'QRIS', icon: '📱' },
-  { key: 'transfer', label: 'Transfer', icon: '🏦' },
+  // Juga lewat gateway: pelanggan transfer ke nomor VA, dana dikonfirmasi otomatis.
+  { key: 'va', label: 'Transfer', icon: '🏦' },
   { key: 'debit', label: 'Debit', icon: '💳' },
 ] as const;
 
@@ -63,6 +74,7 @@ export default function CashierPage() {
   const [processing, setProcessing] = useState(false);
   const [receipt, setReceipt] = useState<TransactionWithRelations | null>(null);
   const [awaitingPayment, setAwaitingPayment] = useState<TransactionWithRelations | null>(null);
+  const [vaBank, setVaBank] = useState<VaBank>('bca');
   const [cartOpenMobile, setCartOpenMobile] = useState(false);
   const [newCustomerOpen, setNewCustomerOpen] = useState(false);
 
@@ -536,6 +548,26 @@ export default function CashierPage() {
               ))}
             </div>
 
+            {paymentMethod === 'va' && (
+              <div>
+                <label htmlFor="va-bank" className="mb-1.5 block text-xs font-medium text-ink-muted">
+                  Bank tujuan transfer
+                </label>
+                <select
+                  id="va-bank"
+                  value={vaBank}
+                  onChange={(event) => setVaBank(event.target.value as VaBank)}
+                  className="w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-sm outline-none focus:border-emerald-500"
+                >
+                  {VA_BANKS.map((code) => (
+                    <option key={code} value={code}>
+                      {VA_BANK_LABELS[code]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {paymentMethod === 'cash' && (
               <div className="space-y-2">
                 <input
@@ -723,7 +755,20 @@ export default function CashierPage() {
         {receipt && <Receipt transaction={receipt} settings={settings} tzOffset={tzOffset} />}
       </Modal>
 
-      <QrisPaymentDialog transaction={awaitingPayment} onPaid={handlePaymentSettled} onClose={closePaymentDialog} />
+      {/* Dialog dipilih berdasarkan metode transaksinya, bukan pilihan yang
+          sedang aktif di keranjang — keranjang sudah dikosongkan saat ini. */}
+      <QrisPaymentDialog
+        transaction={awaitingPayment?.payment_method === 'qris_online' ? awaitingPayment : null}
+        onPaid={handlePaymentSettled}
+        onClose={closePaymentDialog}
+      />
+
+      <VaPaymentDialog
+        transaction={awaitingPayment?.payment_method === 'va' ? awaitingPayment : null}
+        bank={vaBank}
+        onPaid={handlePaymentSettled}
+        onClose={closePaymentDialog}
+      />
 
       <Modal
         open={newCustomerOpen}

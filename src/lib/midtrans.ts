@@ -1,5 +1,6 @@
 import { createHash } from 'crypto';
 import { AppError, badRequest } from './http';
+import type { VaBank } from './types';
 
 /**
  * Klien Midtrans Core API seperlunya untuk QRIS.
@@ -219,6 +220,102 @@ async function recoverExistingQris(orderId: string, amount: number): Promise<Qri
     orderId,
     providerRef: status.transaction_id,
     qrUrl: `${baseUrl()}/v2/${path}/${status.transaction_id}/qr-code`,
+    expiresAt: toUtcTimestamp(status.expiry_time),
+    raw: status,
+  };
+}
+
+/**
+ * Berapa lama nomor VA berlaku.
+ *
+ * Bawaan Midtrans 24 jam, terlalu lama untuk kasir: stok tertahan selama itu
+ * padahal pelanggan sedang berdiri di depan meja. 30 menit cukup longgar untuk
+ * membuka m-banking tanpa menyandera stok seharian.
+ */
+export const VA_EXPIRY_MINUTES = 30;
+
+export interface VaCharge {
+  orderId: string;
+  providerRef: string | null;
+  bank: string;
+  vaNumber: string;
+  expiresAt: string;
+  raw: unknown;
+}
+
+interface VaResponse extends ChargeResponse {
+  va_numbers?: { bank: string; va_number: string }[];
+  /** Permata memakai field tersendiri, bukan array va_numbers. */
+  permata_va_number?: string;
+}
+
+/** Membuat tagihan Virtual Account. */
+export async function chargeVirtualAccount(orderId: string, amount: number, bank: VaBank): Promise<VaCharge> {
+  if (!Number.isInteger(amount) || amount <= 0) throw badRequest('Nominal pembayaran tidak valid');
+
+  const body = {
+    payment_type: 'bank_transfer',
+    transaction_details: { order_id: orderId, gross_amount: amount },
+    bank_transfer: { bank },
+    custom_expiry: { unit: 'minute', expiry_duration: VA_EXPIRY_MINUTES },
+  };
+
+  const result = await callApi<VaResponse>('/v2/charge', { method: 'POST', body: JSON.stringify(body) });
+
+  if (result.status_code === '406') {
+    const recovered = await recoverExistingVa(orderId, amount, bank);
+    if (recovered) return recovered;
+  }
+
+  if (result.status_code !== '201' && result.status_code !== '200') {
+    throw new AppError(
+      `Gateway menolak permintaan pembayaran: ${result.status_message ?? result.status_code}`,
+      502,
+      'PAYMENT_REJECTED',
+    );
+  }
+
+  const vaNumber = extractVaNumber(result, bank);
+  if (!vaNumber) throw new AppError('Gateway tidak mengembalikan nomor Virtual Account.', 502, 'PAYMENT_NO_VA');
+
+  return {
+    orderId,
+    providerRef: result.transaction_id ?? null,
+    bank,
+    vaNumber,
+    expiresAt: toUtcTimestamp(result.expiry_time),
+    raw: result,
+  };
+}
+
+function extractVaNumber(result: VaResponse, bank: VaBank): string | null {
+  if (bank === 'permata') return result.permata_va_number ?? null;
+  return result.va_numbers?.find((entry) => entry.bank === bank)?.va_number ?? result.va_numbers?.[0]?.va_number ?? null;
+}
+
+/**
+ * Mengambil kembali nomor VA yang sudah terlanjur diterbitkan.
+ *
+ * Berbeda dari QRIS, endpoint status VA memang mengembalikan nomornya, jadi
+ * tidak perlu menyusun apa pun sendiri.
+ */
+async function recoverExistingVa(orderId: string, amount: number, bank: VaBank): Promise<VaCharge | null> {
+  const status = await callApi<VaResponse & { fraud_status?: string }>(
+    `/v2/${encodeURIComponent(orderId)}/status`,
+    { method: 'GET' },
+  );
+
+  if (mapStatus(status.transaction_status ?? '', status.fraud_status) !== 'pending') return null;
+  if (Math.round(Number.parseFloat(status.gross_amount ?? '0')) !== amount) return null;
+
+  const vaNumber = extractVaNumber(status, bank);
+  if (!vaNumber) return null;
+
+  return {
+    orderId,
+    providerRef: status.transaction_id ?? null,
+    bank,
+    vaNumber,
     expiresAt: toUtcTimestamp(status.expiry_time),
     raw: status,
   };
