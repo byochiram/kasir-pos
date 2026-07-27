@@ -1,0 +1,7 @@
+# Skrip shell dan berkas unit dijalankan di Linux. Kalau ter-checkout dengan
+# CRLF, shebang-nya jadi "/usr/bin/env bash\r" dan gagal dengan pesan yang
+# membingungkan.
+*.sh            text eol=lf
+*.service       text eol=lf
+deploy/*.conf   text eol=lf
+Dockerfile      text eol=lf
