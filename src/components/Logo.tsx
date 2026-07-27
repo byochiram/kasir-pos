@@ -1,3 +1,7 @@
+'use client';
+
+import { useId } from 'react';
+
 /**
  * Lambang KasirApp: struk belanja dengan tepi bawah bergerigi.
  *
@@ -5,16 +9,22 @@
  * ikut berganti warna mengikuti tema, dan tidak menambah permintaan jaringan.
  */
 export function LogoMark({ className = 'h-9 w-9' }: { className?: string }) {
+  // ID gradasi harus unik per instance. Halaman login memuat dua logo — satu
+  // khusus desktop, satu khusus mobile — dan salah satunya selalu berada di
+  // dalam elemen display:none. Dengan ID yang sama, logo yang tampil ikut
+  // menunjuk definisi milik elemen tersembunyi dan berakhir tanpa warna.
+  const gradientId = useId();
+
   return (
     <svg viewBox="0 0 40 40" className={className} role="img" aria-label="KasirApp">
       <defs>
-        <linearGradient id="kasir-logo-bg" x1="0" y1="0" x2="1" y2="1">
+        <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor="#34d399" />
           <stop offset="100%" stopColor="#059669" />
         </linearGradient>
       </defs>
 
-      <rect width="40" height="40" rx="11" fill="url(#kasir-logo-bg)" />
+      <rect width="40" height="40" rx="11" fill={`url(#${gradientId})`} />
 
       {/* Struk: sisi atas lurus, sisi bawah bergerigi seperti kertas yang disobek. */}
       <path
@@ -33,7 +43,7 @@ export function LogoMark({ className = 'h-9 w-9' }: { className?: string }) {
 
 export function LogoWordmark({ className = '' }: { className?: string }) {
   return (
-    <span className={`text-lg font-bold tracking-tight ${className}`}>
+    <span className={`font-bold tracking-tight ${className}`}>
       Kasir<span className="text-emerald-600 dark:text-emerald-400">App</span>
     </span>
   );

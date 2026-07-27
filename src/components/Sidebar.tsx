@@ -210,7 +210,7 @@ export default function Sidebar() {
         <div className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-line px-3">
           <Link href="/" className="flex min-w-0 items-center gap-2.5">
             <LogoMark className="h-9 w-9 shrink-0" />
-            {!collapsed && <LogoWordmark className="truncate text-ink" />}
+            {!collapsed && <LogoWordmark className="truncate text-lg text-ink" />}
           </Link>
           <button
             type="button"

@@ -7,6 +7,26 @@ import { useApp } from '@/components/AppProvider';
 import Button from '@/components/ui/Button';
 import { LogoMark, LogoWordmark } from '@/components/Logo';
 
+/** Ikon SVG, bukan emoji: tampilannya konsisten di semua sistem operasi. */
+const FEATURES = [
+  {
+    icon: 'M4 6h16M4 6v12M8 6v12M12 6v12M16 6v12M20 6v12M4 18h16',
+    text: 'Transaksi cepat dengan scan barcode',
+  },
+  {
+    icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
+    text: 'Stok terpotong otomatis dan tercatat riwayatnya',
+  },
+  {
+    icon: 'M4 4h6v6H4V4zm10 0h6v6h-6V4zM4 14h6v6H4v-6zm10 3h3m3 0h.01M14 20h6',
+    text: 'QRIS dan transfer terkonfirmasi otomatis',
+  },
+  {
+    icon: 'M3 20h18M7 20V10m5 10V4m5 16v-7',
+    text: 'Laporan penjualan, laba, dan pengeluaran',
+  },
+];
+
 const DEMO_ACCOUNTS = [
   { role: 'Admin', email: 'admin@kasir.com', password: 'admin123' },
   { role: 'Kasir', email: 'kasir@kasir.com', password: 'kasir123' },
@@ -153,36 +173,41 @@ export default function LoginPage() {
             Aplikasi kasir yang mencatat setiap transaksi, stok, dan laba — tanpa ribet.
           </p>
 
-          <ul className="mt-9 space-y-3.5">
-            {[
-              ['🧾', 'Transaksi cepat dengan dukungan scan barcode'],
-              ['📦', 'Stok otomatis terpotong dan tercatat riwayatnya'],
-              ['📱', 'Pembayaran QRIS dan transfer terkonfirmasi otomatis'],
-              ['📊', 'Laporan penjualan, laba, dan pengeluaran harian'],
-            ].map(([icon, item]) => (
-              <li key={item} className="flex items-center gap-3">
+          <ul className="mt-9 max-w-md space-y-2.5">
+            {FEATURES.map((feature) => (
+              <li
+                key={feature.text}
+                className="flex items-center gap-3.5 rounded-2xl border border-line/80 bg-surface/70 p-3 shadow-sm backdrop-blur-sm"
+              >
                 <span
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-line bg-surface text-base shadow-sm"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600/10 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300"
                   aria-hidden
                 >
-                  {icon}
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d={feature.icon} />
+                  </svg>
                 </span>
-                <span className="text-sm text-ink-muted">{item}</span>
+                <span className="text-sm font-medium text-ink">{feature.text}</span>
               </li>
             ))}
           </ul>
+
+          <p className="mt-8 max-w-md text-xs text-ink-subtle">
+            Dibangun dengan Next.js, SQLite, dan integrasi pembayaran Midtrans.
+          </p>
         </div>
       </div>
 
-      <div className="flex flex-1 items-center justify-center overflow-y-auto bg-surface-2 px-5 py-10">
-        <div className="w-full max-w-[380px]">
+      <div className="flex flex-1 items-center justify-center overflow-y-auto bg-surface px-5 py-10 lg:bg-surface-2">
+        <div className="w-full max-w-[400px] lg:rounded-3xl lg:border lg:border-line lg:bg-surface lg:p-8 lg:shadow-sm">
+          {/* Logo hanya di mobile; di desktop sudah tampil besar di panel kiri. */}
           <div className="mb-7 flex items-center gap-3 lg:hidden">
             <LogoMark className="h-11 w-11" />
             <LogoWordmark className="text-xl text-ink" />
           </div>
 
-          <h2 className="text-xl font-bold text-ink">Masuk ke akun Anda</h2>
-          <p className="mb-6 mt-1 text-sm text-ink-muted">Gunakan email dan password yang diberikan admin toko.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-ink">Masuk ke akun Anda</h2>
+          <p className="mb-6 mt-1.5 text-sm text-ink-muted">Gunakan email dan password yang diberikan admin toko.</p>
 
           <Suspense fallback={<div className="h-64 animate-pulse rounded-xl bg-surface-3" />}>
             <LoginForm />
