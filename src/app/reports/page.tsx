@@ -1,272 +1,368 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useMemo, useState } from 'react';
+import { qs } from '@/lib/api-client';
+import { downloadCsv } from '@/lib/csv';
+import { useFetch } from '@/hooks/useFetch';
+import { addDays, formatNumber, formatPlainDate, formatRupiah, todayInStore } from '@/lib/format';
+import { useApp } from '@/components/AppProvider';
+import { useToast } from '@/components/ui/Toast';
+import PageHeader from '@/components/PageHeader';
+import Button from '@/components/ui/Button';
+import BarChart from '@/components/charts/BarChart';
+import { ErrorState, PageLoader } from '@/components/ui/States';
+import type { SalesReport } from '@/lib/types';
 
-function formatRupiah(amount: number) {
-  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
-}
+const SERIES_SALES = '#2a78d6';
+const SERIES_PROFIT = '#008300';
 
-function toDateString(d: Date) {
-  return d.toISOString().split('T')[0];
-}
+const PAYMENT_LABELS: Record<string, string> = {
+  cash: 'Tunai',
+  qris: 'QRIS',
+  transfer: 'Transfer',
+  debit: 'Debit',
+};
 
-interface DailySale {
-  date: string;
-  transactions: number;
-  sales: number;
-}
-
-interface TopProduct {
-  name: string;
-  quantity: number;
-  revenue: number;
-}
-
-interface PaymentBreakdown {
-  payment_method: string;
-  count: number;
-  total: number;
-}
-
-interface ReportData {
-  summary: {
-    totalSales: number;
-    totalProfit: number;
-    totalExpenses: number;
-    netProfit: number;
-    totalTransactions: number;
-  };
-  dailySales: DailySale[];
-  topProducts: TopProduct[];
-  byPayment: PaymentBreakdown[];
-}
-
-const summaryCards = [
-  { key: 'totalSales', label: 'Total Penjualan', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z', bg: 'bg-emerald-50', text: 'text-emerald-600', iconBg: 'bg-emerald-100' },
-  { key: 'totalProfit', label: 'Total Laba', icon: 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6', bg: 'bg-emerald-50', text: 'text-emerald-600', iconBg: 'bg-emerald-100' },
-  { key: 'totalExpenses', label: 'Total Pengeluaran', icon: 'M13 17h8m0 0V9m0 8l-8-8-4 4-6-6', bg: 'bg-orange-50', text: 'text-orange-600', iconBg: 'bg-orange-100' },
-  { key: 'netProfit', label: 'Laba Bersih', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z', bg: 'bg-teal-50', text: 'text-teal-600', iconBg: 'bg-teal-100' },
-  { key: 'totalTransactions', label: 'Transaksi', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2', bg: 'bg-purple-50', text: 'text-purple-600', iconBg: 'bg-purple-100' },
+const QUICK_RANGES = [
+  { label: 'Hari ini', days: 1 },
+  { label: '7 hari', days: 7 },
+  { label: '30 hari', days: 30 },
+  { label: '90 hari', days: 90 },
 ];
 
 export default function ReportsPage() {
-  const today = new Date();
-  const [startDate, setStartDate] = useState(toDateString(today));
-  const [endDate, setEndDate] = useState(toDateString(today));
-  const [data, setData] = useState<ReportData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [quickActive, setQuickActive] = useState<number>(1);
+  const { tzOffset } = useApp();
+  const toast = useToast();
 
-  const setQuickRange = (days: number) => {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(end.getDate() - days + 1);
-    setStartDate(toDateString(start));
-    setEndDate(toDateString(end));
-    setQuickActive(days);
-  };
+  // Lazy initializer: tanggal dihitung sekali saat mount, bukan tiap render.
+  const [startDate, setStartDate] = useState(() => addDays(todayInStore(tzOffset), -6));
+  const [endDate, setEndDate] = useState(() => todayInStore(tzOffset));
+  const [activeRange, setActiveRange] = useState<number | null>(7);
 
-  const fetchReport = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/reports?startDate=${startDate}&endDate=${endDate}`);
-      const json = await res.json();
-      setData(json);
-    } catch {
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [startDate, endDate]);
+  const dateInvalid = startDate > endDate;
 
-  useEffect(() => {
-    fetchReport();
-  }, [fetchReport]);
+  // Debounce supaya mengetik tanggal manual tidak memicu satu request per ketukan.
+  const url = useMemo(
+    () => (dateInvalid ? null : `/api/reports${qs({ startDate, endDate })}`),
+    [startDate, endDate, dateInvalid],
+  );
+  const { data: report, loading, error, reload } = useFetch<SalesReport>(url, { debounceMs: 400 });
 
-  const summary = data?.summary;
-  const dailySales = data?.dailySales || [];
-  const topProducts = data?.topProducts || [];
-  const byPayment = data?.byPayment || [];
+  function setQuickRange(days: number) {
+    const today = todayInStore(tzOffset);
+    setStartDate(addDays(today, -(days - 1)));
+    setEndDate(today);
+    setActiveRange(days);
+  }
+
+  function exportCsv() {
+    if (!report) return;
+    const rows: (string | number)[][] = [
+      ['Laporan Penjualan', `${startDate} s/d ${endDate}`],
+      [],
+      ['Ringkasan'],
+      ['Total Transaksi', report.summary.totalTransactions],
+      ['Total Omzet', report.summary.totalSales],
+      ['Laba Kotor', report.summary.totalProfit],
+      ['Total Pengeluaran', report.summary.totalExpenses],
+      ['Laba Bersih', report.summary.netProfit],
+      ['Rata-rata per Transaksi', report.summary.averageTransaction],
+      ['Item Terjual', report.summary.totalItemsSold],
+      ['Transaksi Dibatalkan', report.summary.voidedCount],
+      [],
+      ['Penjualan Harian'],
+      ['Tanggal', 'Transaksi', 'Omzet', 'Laba Kotor'],
+      ...report.dailySales.map((d) => [d.date, d.transactions, d.sales, d.profit]),
+      [],
+      ['Produk Terlaris'],
+      ['Produk', 'Qty Terjual', 'Omzet', 'Laba'],
+      ...report.topProducts.map((p) => [p.name, p.quantity, p.revenue, p.profit]),
+      [],
+      ['Metode Pembayaran'],
+      ['Metode', 'Jumlah Transaksi', 'Total'],
+      ...report.byPayment.map((p) => [PAYMENT_LABELS[p.payment_method] ?? p.payment_method, p.count, p.total]),
+      [],
+      ['Pengeluaran per Kategori'],
+      ['Kategori', 'Total'],
+      ...report.expensesByCategory.map((e) => [e.category, e.total]),
+    ];
+    downloadCsv(`laporan-${startDate}-sd-${endDate}.csv`, rows);
+    toast.success('Laporan diunduh sebagai CSV');
+  }
 
   return (
-    <div className="p-6 lg:p-8 max-w-full">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-900">Laporan Penjualan</h1>
-        <p className="text-slate-500 mt-1">Analisis penjualan dan performa bisnis</p>
-      </div>
+    <>
+      <PageHeader
+        title="Laporan"
+        description={`Periode ${formatPlainDate(startDate)} – ${formatPlainDate(endDate)}`}
+        actions={
+          <>
+            {report && (
+              <Button variant="secondary" onClick={exportCsv}>
+                ⬇ Ekspor CSV
+              </Button>
+            )}
+            <Button variant="secondary" onClick={() => window.print()}>
+              🖨️ Cetak
+            </Button>
+          </>
+        }
+      />
 
-      <div className="flex flex-wrap items-end gap-3 mb-8">
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Dari</label>
-          <input type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); setQuickActive(0); }} className="border border-slate-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all" />
+      <div className="mb-4 rounded-2xl border border-slate-200/70 bg-white p-3 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="date"
+            value={startDate}
+            onChange={(event) => {
+              setStartDate(event.target.value);
+              setActiveRange(null);
+            }}
+            aria-label="Tanggal mulai"
+            className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-500 sm:flex-none"
+          />
+          <span className="text-sm text-slate-400">s/d</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(event) => {
+              setEndDate(event.target.value);
+              setActiveRange(null);
+            }}
+            aria-label="Tanggal akhir"
+            className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-500 sm:flex-none"
+          />
+          <div className="flex flex-wrap gap-1.5">
+            {QUICK_RANGES.map((range) => (
+              <button
+                key={range.days}
+                type="button"
+                onClick={() => setQuickRange(range.days)}
+                aria-pressed={activeRange === range.days}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  activeRange === range.days
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {range.label}
+              </button>
+            ))}
+          </div>
         </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Sampai</label>
-          <input type="date" value={endDate} onChange={(e) => { setEndDate(e.target.value); setQuickActive(0); }} className="border border-slate-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all" />
-        </div>
-        <div className="flex gap-2">
-          {[
-            { days: 1, label: 'Hari Ini' },
-            { days: 7, label: '7 Hari' },
-            { days: 30, label: '30 Hari' },
-          ].map((q) => (
-            <button
-              key={q.days}
-              onClick={() => setQuickRange(q.days)}
-              className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                quickActive === q.days
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-              }`}
-            >
-              {q.label}
-            </button>
-          ))}
-        </div>
+        {dateInvalid && (
+          <p className="mt-2 text-xs font-medium text-red-600">Tanggal mulai tidak boleh setelah tanggal akhir.</p>
+        )}
       </div>
 
       {loading ? (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 p-12">
-          <div className="flex flex-col items-center justify-center text-slate-400">
-            <div className="w-8 h-8 border-2 border-slate-200 border-t-emerald-600 rounded-full animate-spin mb-3" />
-            Memuat laporan...
-          </div>
-        </div>
-      ) : !data ? (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 p-12">
-          <div className="flex flex-col items-center justify-center text-slate-400">
-            <svg className="w-10 h-10 text-slate-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-            <span>Gagal memuat laporan</span>
-          </div>
-        </div>
+        <PageLoader label="Menyusun laporan..." />
+      ) : error || !report ? (
+        <ErrorState message={error ?? 'Laporan tidak tersedia'} onRetry={reload} />
       ) : (
-        <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-            {summaryCards.map((card) => {
-              const value = card.key === 'totalTransactions'
-                ? String(summary?.totalTransactions || 0)
-                : formatRupiah((summary as any)?.[card.key] || 0);
-              return (
-                <div key={card.key} className={`${card.bg} rounded-2xl p-5 border border-slate-200/40`}>
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className={`${card.iconBg} w-9 h-9 rounded-xl flex items-center justify-center`}>
-                      <svg className={`w-5 h-5 ${card.text}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={card.icon} /></svg>
-                    </div>
-                  </div>
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{card.label}</p>
-                  <p className={`text-xl font-bold ${card.text} mt-1`}>{value}</p>
-                </div>
-              );
-            })}
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <SummaryCard label="Total Omzet" value={formatRupiah(report.summary.totalSales)} />
+            <SummaryCard label="Laba Kotor" value={formatRupiah(report.summary.totalProfit)} />
+            <SummaryCard label="Total Pengeluaran" value={formatRupiah(report.summary.totalExpenses)} tone="negative" />
+            <SummaryCard
+              label="Laba Bersih"
+              value={formatRupiah(report.summary.netProfit)}
+              // Rugi harus terlihat merah, bukan hijau seperti untung.
+              tone={report.summary.netProfit < 0 ? 'negative' : 'positive'}
+              emphasis
+            />
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-                <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
-                <h3 className="font-semibold text-slate-900">Penjualan Harian</h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Tanggal</th>
-                      <th className="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Transaksi</th>
-                      <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Penjualan</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {dailySales.length === 0 ? (
-                      <tr><td colSpan={3} className="px-6 py-8 text-center text-slate-400">Tidak ada data</td></tr>
-                    ) : (
-                      dailySales.map((day, i) => (
-                        <tr key={i} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-6 py-3 text-slate-600">{day.date}</td>
-                          <td className="px-6 py-3 text-center text-slate-600">{day.transactions}</td>
-                          <td className="px-6 py-3 text-right font-medium text-slate-900">{formatRupiah(day.sales)}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-                <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>
-                <h3 className="font-semibold text-slate-900">Produk Terlaris</h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">#</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Nama</th>
-                      <th className="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Qty</th>
-                      <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Revenue</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {topProducts.length === 0 ? (
-                      <tr><td colSpan={4} className="px-6 py-8 text-center text-slate-400">Tidak ada data</td></tr>
-                    ) : (
-                      topProducts.map((p, i) => (
-                        <tr key={i} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-6 py-3">
-                            <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${
-                              i === 0 ? 'bg-amber-100 text-amber-700' : i === 1 ? 'bg-slate-200 text-slate-600' : i === 2 ? 'bg-orange-100 text-orange-700' : 'bg-slate-50 text-slate-500'
-                            }`}>{i + 1}</span>
-                          </td>
-                          <td className="px-6 py-3 font-medium text-slate-900">{p.name}</td>
-                          <td className="px-6 py-3 text-center text-slate-600">{p.quantity}</td>
-                          <td className="px-6 py-3 text-right font-medium text-slate-900">{formatRupiah(p.revenue)}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <SummaryCard label="Transaksi" value={formatNumber(report.summary.totalTransactions)} small />
+            <SummaryCard label="Item Terjual" value={formatNumber(report.summary.totalItemsSold)} small />
+            <SummaryCard
+              label="Rata-rata / Transaksi"
+              value={formatRupiah(report.summary.averageTransaction)}
+              small
+            />
+            <SummaryCard
+              label="Dibatalkan"
+              value={formatNumber(report.summary.voidedCount)}
+              tone={report.summary.voidedCount > 0 ? 'negative' : undefined}
+              small
+            />
           </div>
 
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-              <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
-              <h3 className="font-semibold text-slate-900">Metode Pembayaran</h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Metode</th>
-                    <th className="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Jumlah</th>
-                    <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Total</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {byPayment.length === 0 ? (
-                    <tr><td colSpan={3} className="px-6 py-8 text-center text-slate-400">Tidak ada data</td></tr>
-                  ) : (
-                    byPayment.map((pm, i) => (
-                      <tr key={i} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-3">
-                          <span className="inline-flex items-center gap-2">
-                            <span className={`w-2 h-2 rounded-full ${pm.payment_method === 'cash' ? 'bg-emerald-500' : pm.payment_method === 'card' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                            <span className="font-medium text-slate-900 capitalize">{pm.payment_method}</span>
-                          </span>
-                        </td>
-                        <td className="px-6 py-3 text-center text-slate-600">{pm.count}</td>
-                        <td className="px-6 py-3 text-right font-medium text-slate-900">{formatRupiah(pm.total)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+          <section className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
+            <h2 className="mb-3 font-bold text-slate-800">Tren Penjualan Harian</h2>
+            <BarChart
+              labels={report.dailySales.map((d) => formatPlainDate(d.date))}
+              series={[
+                { key: 'sales', label: 'Omzet', color: SERIES_SALES, values: report.dailySales.map((d) => d.sales) },
+                { key: 'profit', label: 'Laba Kotor', color: SERIES_PROFIT, values: report.dailySales.map((d) => d.profit) },
+              ]}
+              formatValue={formatRupiah}
+              height={220}
+              emptyLabel="Tidak ada penjualan pada periode ini"
+            />
+          </section>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Panel
+              title="Produk Terlaris"
+              // Laba per produk dihitung dari harga baris dikurangi modal, tanpa
+              // membagi diskon tingkat transaksi. Totalnya bisa sedikit berbeda
+              // dari Laba Kotor di ringkasan.
+              note="Laba per produk belum memperhitungkan diskon tingkat transaksi"
+            >
+              {report.topProducts.length === 0 ? (
+                <Empty />
+              ) : (
+                <SimpleTable
+                  head={['Produk', 'Qty', 'Omzet', 'Laba']}
+                  align={['left', 'right', 'right', 'right']}
+                  rows={report.topProducts.map((p) => [
+                    p.name,
+                    formatNumber(p.quantity),
+                    formatRupiah(p.revenue),
+                    formatRupiah(p.profit),
+                  ])}
+                  keyOf={(_, index) => report.topProducts[index].product_id}
+                />
+              )}
+            </Panel>
+
+            <Panel title="Metode Pembayaran">
+              {report.byPayment.length === 0 ? (
+                <Empty />
+              ) : (
+                <SimpleTable
+                  head={['Metode', 'Transaksi', 'Total']}
+                  align={['left', 'right', 'right']}
+                  rows={report.byPayment.map((p) => [
+                    PAYMENT_LABELS[p.payment_method] ?? p.payment_method,
+                    formatNumber(p.count),
+                    formatRupiah(p.total),
+                  ])}
+                  keyOf={(_, index) => report.byPayment[index].payment_method}
+                />
+              )}
+            </Panel>
+
+            <Panel title="Omzet per Kategori">
+              {report.byCategory.length === 0 ? (
+                <Empty />
+              ) : (
+                <SimpleTable
+                  head={['Kategori', 'Total']}
+                  align={['left', 'right']}
+                  rows={report.byCategory.map((c) => [c.category, formatRupiah(c.total)])}
+                  keyOf={(_, index) => report.byCategory[index].category}
+                />
+              )}
+            </Panel>
+
+            <Panel title="Pengeluaran per Kategori">
+              {report.expensesByCategory.length === 0 ? (
+                <Empty label="Tidak ada pengeluaran pada periode ini" />
+              ) : (
+                <SimpleTable
+                  head={['Kategori', 'Total']}
+                  align={['left', 'right']}
+                  rows={report.expensesByCategory.map((c) => [c.category, formatRupiah(c.total)])}
+                  keyOf={(_, index) => report.expensesByCategory[index].category}
+                />
+              )}
+            </Panel>
           </div>
-        </>
+        </div>
       )}
+    </>
+  );
+}
+
+function SummaryCard({
+  label,
+  value,
+  tone,
+  emphasis = false,
+  small = false,
+}: {
+  label: string;
+  value: string;
+  tone?: 'positive' | 'negative';
+  emphasis?: boolean;
+  small?: boolean;
+}) {
+  const color = tone === 'negative' ? 'text-red-600' : tone === 'positive' ? 'text-emerald-600' : 'text-slate-800';
+  return (
+    <div
+      className={`rounded-2xl border bg-white p-3.5 shadow-sm sm:p-4 ${
+        emphasis ? 'border-emerald-200 ring-1 ring-emerald-100' : 'border-slate-200/70'
+      }`}
+    >
+      <p className="truncate text-xs uppercase tracking-wide text-slate-500">{label}</p>
+      <p className={`mt-1 break-words font-bold ${color} ${small ? 'text-base' : 'text-lg sm:text-xl'}`}>{value}</p>
+    </div>
+  );
+}
+
+function Panel({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm">
+      <div className="border-b border-slate-200/70 px-4 py-3">
+        <h2 className="font-bold text-slate-800">{title}</h2>
+        {note && <p className="mt-0.5 text-xs text-slate-500">{note}</p>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Empty({ label = 'Tidak ada data pada periode ini' }: { label?: string }) {
+  return <p className="px-4 py-10 text-center text-sm text-slate-400">{label}</p>;
+}
+
+function SimpleTable({
+  head,
+  rows,
+  align,
+  keyOf,
+}: {
+  head: string[];
+  rows: string[][];
+  align: ('left' | 'right')[];
+  keyOf: (row: string[], index: number) => string;
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead className="bg-slate-50/70 text-xs uppercase tracking-wide text-slate-500">
+          <tr>
+            {head.map((cell, index) => (
+              <th
+                key={cell}
+                className={`px-4 py-2.5 font-semibold ${align[index] === 'right' ? 'text-right' : 'text-left'}`}
+              >
+                {cell}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {rows.map((row, rowIndex) => (
+            <tr key={keyOf(row, rowIndex)} className="hover:bg-slate-50/60">
+              {row.map((cell, cellIndex) => (
+                <td
+                  key={cellIndex}
+                  className={`px-4 py-2.5 ${
+                    align[cellIndex] === 'right' ? 'text-right tabular-nums font-medium text-slate-800' : 'text-slate-600'
+                  }`}
+                >
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

@@ -1,24 +1,27 @@
-import { NextRequest } from 'next/server';
+import { requireAdmin, requireAuth } from '@/lib/auth';
 import { getTransactionById, voidTransaction } from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { forbidden, json, notFound, readBody, route } from '@/lib/http';
+import { voidTransactionSchema } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const GET = route(async (_request, { params }) => {
+  const session = await requireAuth();
   const { id } = await params;
-  const tx = getTransactionById(id);
-  if (!tx) return Response.json({ error: 'Not found' }, { status: 404 });
-  return Response.json(tx);
-}
-
-export async function PATCH(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const session = await requireAuth();
-    const { id } = await params;
-    const tx = voidTransaction(id, session.id);
-    if (!tx) return Response.json({ error: 'Cannot void' }, { status: 400 });
-    return Response.json(tx);
-  } catch (error: any) {
-    return Response.json({ error: error.message }, { status: 400 });
+  const transaction = getTransactionById(id);
+  if (!transaction) throw notFound('Transaksi tidak ditemukan');
+  if (session.role !== 'ADMIN' && transaction.user_id !== session.id) {
+    throw forbidden('Anda hanya bisa melihat transaksi Anda sendiri');
   }
-}
+  return json(transaction);
+});
+
+// Pembatalan transaksi memutar balik stok dan poin pelanggan, jadi khusus admin
+// dan wajib menyertakan alasan untuk jejak audit.
+export const PATCH = route(async (request, { params }) => {
+  const session = await requireAdmin();
+  const { id } = await params;
+  const { reason } = await readBody(request, voidTransactionSchema);
+  return json(voidTransaction(id, session.id, reason));
+});

@@ -1,656 +1,1603 @@
 import Database from 'better-sqlite3';
 import path from 'path';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import bcrypt from 'bcryptjs';
+import { badRequest, conflict, notFound } from './http';
+import type {
+  CategorySales,
+  Customer,
+  DailySales,
+  DashboardStats,
+  Expense,
+  ExpenseWithRelations,
+  Paginated,
+  PaymentBreakdown,
+  Product,
+  PublicUser,
+  Role,
+  SalesReport,
+  Settings,
+  StockHistoryWithRelations,
+  StockMovementType,
+  Supplier,
+  TopProduct,
+  Transaction,
+  TransactionItem,
+  TransactionWithRelations,
+  UserRow,
+} from './types';
 
-const DB_PATH = path.join(process.cwd(), 'kasir.db');
-let db: Database.Database;
+const DB_PATH = process.env.DATABASE_PATH ?? path.join(process.cwd(), 'kasir.db');
+const BCRYPT_ROUNDS = 10;
+
+// Next.js dev me-reload modul saat hot reload; simpan koneksi di globalThis supaya
+// tidak membuka handle SQLite baru setiap perubahan file.
+const globalForDb = globalThis as unknown as { __kasirDb?: Database.Database };
 
 export function getDb(): Database.Database {
-  if (!db) {
-    db = new Database(DB_PATH);
+  if (!globalForDb.__kasirDb) {
+    const db = new Database(DB_PATH);
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
-    initDb();
+    db.pragma('busy_timeout = 5000');
+    migrate(db);
+    globalForDb.__kasirDb = db;
   }
-  return db;
+  return globalForDb.__kasirDb;
 }
 
-function initDb() {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      email TEXT NOT NULL UNIQUE,
-      password TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'KASIR',
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
+// ============================================================================
+// MIGRASI
+// ============================================================================
 
-    CREATE TABLE IF NOT EXISTS settings (
-      id TEXT PRIMARY KEY DEFAULT 'default',
-      store_name TEXT NOT NULL DEFAULT 'KasirApp Store',
-      store_address TEXT DEFAULT '',
-      store_phone TEXT DEFAULT '',
-      store_logo TEXT DEFAULT '',
-      tax_rate REAL NOT NULL DEFAULT 11,
-      receipt_footer TEXT DEFAULT 'Terima kasih atas kunjungan Anda!',
-      low_stock_threshold INTEGER NOT NULL DEFAULT 5
-    );
+function hasColumn(db: Database.Database, table: string, column: string): boolean {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  return cols.some((c) => c.name === column);
+}
 
-    CREATE TABLE IF NOT EXISTS products (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      price INTEGER NOT NULL DEFAULT 0,
-      cost_price INTEGER NOT NULL DEFAULT 0,
-      stock INTEGER NOT NULL DEFAULT 0,
-      min_stock INTEGER NOT NULL DEFAULT 5,
-      category TEXT NOT NULL DEFAULT 'Umum',
-      barcode TEXT DEFAULT '',
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS customers (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      phone TEXT DEFAULT '',
-      email TEXT DEFAULT '',
-      address TEXT DEFAULT '',
-      points INTEGER NOT NULL DEFAULT 0,
-      total_spent INTEGER NOT NULL DEFAULT 0,
-      visit_count INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS suppliers (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      phone TEXT DEFAULT '',
-      email TEXT DEFAULT '',
-      address TEXT DEFAULT '',
-      contact_person TEXT DEFAULT '',
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS transactions (
-      id TEXT PRIMARY KEY,
-      customer_id TEXT,
-      user_id TEXT NOT NULL,
-      subtotal INTEGER NOT NULL DEFAULT 0,
-      discount INTEGER NOT NULL DEFAULT 0,
-      discount_type TEXT NOT NULL DEFAULT 'amount',
-      tax_rate REAL NOT NULL DEFAULT 0,
-      tax_amount INTEGER NOT NULL DEFAULT 0,
-      total INTEGER NOT NULL DEFAULT 0,
-      payment_method TEXT NOT NULL DEFAULT 'cash',
-      amount_paid INTEGER NOT NULL DEFAULT 0,
-      change INTEGER NOT NULL DEFAULT 0,
-      notes TEXT DEFAULT '',
-      status TEXT NOT NULL DEFAULT 'completed',
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      FOREIGN KEY (customer_id) REFERENCES customers(id),
-      FOREIGN KEY (user_id) REFERENCES users(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS transaction_items (
-      id TEXT PRIMARY KEY,
-      transaction_id TEXT NOT NULL,
-      product_id TEXT NOT NULL,
-      product_name TEXT NOT NULL,
-      price INTEGER NOT NULL,
-      cost_price INTEGER NOT NULL DEFAULT 0,
-      quantity INTEGER NOT NULL,
-      discount INTEGER NOT NULL DEFAULT 0,
-      discount_type TEXT NOT NULL DEFAULT 'amount',
-      subtotal INTEGER NOT NULL,
-      FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS stock_history (
-      id TEXT PRIMARY KEY,
-      product_id TEXT NOT NULL,
-      type TEXT NOT NULL,
-      quantity INTEGER NOT NULL,
-      notes TEXT DEFAULT '',
-      created_by TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      FOREIGN KEY (product_id) REFERENCES products(id),
-      FOREIGN KEY (created_by) REFERENCES users(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS expenses (
-      id TEXT PRIMARY KEY,
-      description TEXT NOT NULL,
-      amount INTEGER NOT NULL,
-      category TEXT NOT NULL DEFAULT 'Lainnya',
-      date TEXT NOT NULL,
-      notes TEXT DEFAULT '',
-      created_by TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      FOREIGN KEY (created_by) REFERENCES users(id)
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_products_name ON products(name);
-    CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
-    CREATE INDEX IF NOT EXISTS idx_transactions_created ON transactions(created_at);
-    CREATE INDEX IF NOT EXISTS idx_transactions_customer ON transactions(customer_id);
-    CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id);
-    CREATE INDEX IF NOT EXISTS idx_transaction_items_tid ON transaction_items(transaction_id);
-    CREATE INDEX IF NOT EXISTS idx_stock_history_pid ON stock_history(product_id);
-    CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(date);
-    CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone);
-  `);
-
-  const userCount = (db.prepare('SELECT COUNT(*) as count FROM users').get() as any).count;
-  if (userCount === 0) {
-    seedData();
+function addColumn(db: Database.Database, table: string, column: string, definition: string): void {
+  if (!hasColumn(db, table, column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
 }
 
-function seedData() {
-  const adminPass = bcrypt.hashSync('admin123', 10);
-  const kasirPass = bcrypt.hashSync('kasir123', 10);
+const migrations: { version: number; up: (db: Database.Database) => void }[] = [
+  {
+    // Skema dasar. IF NOT EXISTS supaya database lama (yang dibuat sebelum ada
+    // sistem migrasi ini) lolos tanpa perubahan lalu diperbarui oleh v2.
+    version: 1,
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS users (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          email TEXT NOT NULL UNIQUE,
+          password TEXT NOT NULL,
+          role TEXT NOT NULL DEFAULT 'KASIR',
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
 
-  const adminId = uuidv4();
-  const kasirId = uuidv4();
+        CREATE TABLE IF NOT EXISTS settings (
+          id TEXT PRIMARY KEY DEFAULT 'default',
+          store_name TEXT NOT NULL DEFAULT 'KasirApp Store',
+          store_address TEXT DEFAULT '',
+          store_phone TEXT DEFAULT '',
+          store_logo TEXT DEFAULT '',
+          tax_rate REAL NOT NULL DEFAULT 11,
+          receipt_footer TEXT DEFAULT 'Terima kasih atas kunjungan Anda!',
+          low_stock_threshold INTEGER NOT NULL DEFAULT 5
+        );
 
-  db.prepare('INSERT INTO users (id, name, email, password, role) VALUES (?, ?, ?, ?, ?)').run(adminId, 'Admin', 'admin@kasir.com', adminPass, 'ADMIN');
-  db.prepare('INSERT INTO users (id, name, email, password, role) VALUES (?, ?, ?, ?, ?)').run(kasirId, 'Kasir 1', 'kasir@kasir.com', kasirPass, 'KASIR');
+        CREATE TABLE IF NOT EXISTS products (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          price INTEGER NOT NULL DEFAULT 0,
+          cost_price INTEGER NOT NULL DEFAULT 0,
+          stock INTEGER NOT NULL DEFAULT 0,
+          min_stock INTEGER NOT NULL DEFAULT 5,
+          category TEXT NOT NULL DEFAULT 'Umum',
+          barcode TEXT DEFAULT '',
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
 
-  db.prepare('INSERT INTO settings (id) VALUES (?)').run('default');
+        CREATE TABLE IF NOT EXISTS customers (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          phone TEXT DEFAULT '',
+          email TEXT DEFAULT '',
+          address TEXT DEFAULT '',
+          points INTEGER NOT NULL DEFAULT 0,
+          total_spent INTEGER NOT NULL DEFAULT 0,
+          visit_count INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
 
-  const products = [
-    { name: 'Nasi Goreng Spesial', price: 18000, cost: 10000, stock: 50, cat: 'Makanan' },
-    { name: 'Mie Ayam Bakso', price: 15000, cost: 8000, stock: 40, cat: 'Makanan' },
-    { name: 'Ayam Geprek', price: 20000, cost: 12000, stock: 30, cat: 'Makanan' },
-    { name: 'Soto Ayam', price: 14000, cost: 7000, stock: 35, cat: 'Makanan' },
-    { name: 'Nasi Uduk', price: 12000, cost: 6000, stock: 45, cat: 'Makanan' },
-    { name: 'Es Teh Manis', price: 5000, cost: 1500, stock: 100, cat: 'Minuman' },
-    { name: 'Es Jeruk', price: 7000, cost: 3000, stock: 80, cat: 'Minuman' },
-    { name: 'Kopi Hitam', price: 8000, cost: 3000, stock: 60, cat: 'Minuman' },
-    { name: 'Kopi Susu', price: 12000, cost: 5000, stock: 50, cat: 'Minuman' },
-    { name: 'Air Mineral', price: 3000, cost: 1500, stock: 200, cat: 'Minuman' },
-    { name: 'Kerupuk', price: 2000, cost: 800, stock: 150, cat: 'Snack' },
-    { name: 'Risoles', price: 5000, cost: 2500, stock: 45, cat: 'Snack' },
-    { name: 'Martabak Mini', price: 8000, cost: 4000, stock: 25, cat: 'Snack' },
-    { name: 'Roti Bakar', price: 10000, cost: 5000, stock: 30, cat: 'Snack' },
-    { name: 'Pisang Goreng', price: 3000, cost: 1000, stock: 3, cat: 'Snack' },
-  ];
+        CREATE TABLE IF NOT EXISTS suppliers (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          phone TEXT DEFAULT '',
+          email TEXT DEFAULT '',
+          address TEXT DEFAULT '',
+          contact_person TEXT DEFAULT '',
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
 
-  const prodStmt = db.prepare('INSERT INTO products (id, name, price, cost_price, stock, category) VALUES (?, ?, ?, ?, ?, ?)');
-  for (const p of products) {
-    prodStmt.run(uuidv4(), p.name, p.price, p.cost, p.stock, p.cat);
-  }
+        CREATE TABLE IF NOT EXISTS transactions (
+          id TEXT PRIMARY KEY,
+          customer_id TEXT,
+          user_id TEXT NOT NULL,
+          subtotal INTEGER NOT NULL DEFAULT 0,
+          discount INTEGER NOT NULL DEFAULT 0,
+          discount_type TEXT NOT NULL DEFAULT 'amount',
+          tax_rate REAL NOT NULL DEFAULT 0,
+          tax_amount INTEGER NOT NULL DEFAULT 0,
+          total INTEGER NOT NULL DEFAULT 0,
+          payment_method TEXT NOT NULL DEFAULT 'cash',
+          amount_paid INTEGER NOT NULL DEFAULT 0,
+          change INTEGER NOT NULL DEFAULT 0,
+          notes TEXT DEFAULT '',
+          status TEXT NOT NULL DEFAULT 'completed',
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (customer_id) REFERENCES customers(id),
+          FOREIGN KEY (user_id) REFERENCES users(id)
+        );
 
-  const customers = [
-    { name: 'Budi Santoso', phone: '081234567890', email: 'budi@mail.com' },
-    { name: 'Siti Rahayu', phone: '085678901234', email: 'siti@mail.com' },
-    { name: 'Ahmad Hidayat', phone: '087890123456', email: '' },
-  ];
+        CREATE TABLE IF NOT EXISTS transaction_items (
+          id TEXT PRIMARY KEY,
+          transaction_id TEXT NOT NULL,
+          product_id TEXT NOT NULL,
+          product_name TEXT NOT NULL,
+          price INTEGER NOT NULL,
+          cost_price INTEGER NOT NULL DEFAULT 0,
+          quantity INTEGER NOT NULL,
+          discount INTEGER NOT NULL DEFAULT 0,
+          discount_type TEXT NOT NULL DEFAULT 'amount',
+          subtotal INTEGER NOT NULL,
+          FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE
+        );
 
-  const custStmt = db.prepare('INSERT INTO customers (id, name, phone, email) VALUES (?, ?, ?, ?)');
-  for (const c of customers) {
-    custStmt.run(uuidv4(), c.name, c.phone, c.email);
-  }
+        CREATE TABLE IF NOT EXISTS stock_history (
+          id TEXT PRIMARY KEY,
+          product_id TEXT NOT NULL,
+          type TEXT NOT NULL,
+          quantity INTEGER NOT NULL,
+          notes TEXT DEFAULT '',
+          created_by TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (product_id) REFERENCES products(id),
+          FOREIGN KEY (created_by) REFERENCES users(id)
+        );
 
-  const suppliers = [
-    { name: 'PT Sumber Rejeki', phone: '021-1234567', contact: 'Pak Joko' },
-    { name: 'CV Maju Bersama', phone: '021-7654321', contact: 'Bu Ani' },
-  ];
+        CREATE TABLE IF NOT EXISTS expenses (
+          id TEXT PRIMARY KEY,
+          description TEXT NOT NULL,
+          amount INTEGER NOT NULL,
+          category TEXT NOT NULL DEFAULT 'Lainnya',
+          date TEXT NOT NULL,
+          notes TEXT DEFAULT '',
+          created_by TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (created_by) REFERENCES users(id)
+        );
+      `);
+    },
+  },
+  {
+    // Kolom-kolom yang dibutuhkan versi aplikasi ini: soft delete, jejak audit
+    // void, nomor invoice, dan snapshot stok pada setiap pergerakan.
+    version: 2,
+    up: (db) => {
+      addColumn(db, 'users', 'is_active', 'INTEGER NOT NULL DEFAULT 1');
+      addColumn(db, 'users', 'updated_at', "TEXT NOT NULL DEFAULT ''");
+      addColumn(db, 'users', 'deleted_at', 'TEXT');
+      db.exec("UPDATE users SET updated_at = created_at WHERE updated_at = ''");
 
-  const suppStmt = db.prepare('INSERT INTO suppliers (id, name, phone, contact_person) VALUES (?, ?, ?, ?)');
-  for (const s of suppliers) {
-    suppStmt.run(uuidv4(), s.name, s.phone, s.contact);
-  }
-}
+      addColumn(db, 'products', 'unit', "TEXT NOT NULL DEFAULT 'pcs'");
+      addColumn(db, 'products', 'is_active', 'INTEGER NOT NULL DEFAULT 1');
+      addColumn(db, 'products', 'deleted_at', 'TEXT');
 
-// ===== PRODUCTS =====
-export function getAllProducts(search?: string, category?: string) {
-  const d = getDb();
-  let query = 'SELECT * FROM products WHERE 1=1';
-  const params: string[] = [];
-  if (search) { query += ' AND (name LIKE ? OR barcode LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
-  if (category && category !== 'Semua') { query += ' AND category = ?'; params.push(category); }
-  query += ' ORDER BY name ASC';
-  return d.prepare(query).all(...params) as any[];
-}
+      addColumn(db, 'customers', 'updated_at', "TEXT NOT NULL DEFAULT ''");
+      addColumn(db, 'customers', 'deleted_at', 'TEXT');
+      db.exec("UPDATE customers SET updated_at = created_at WHERE updated_at = ''");
 
-export function getProductById(id: string) {
-  return getDb().prepare('SELECT * FROM products WHERE id = ?').get(id) as any;
-}
+      addColumn(db, 'suppliers', 'updated_at', "TEXT NOT NULL DEFAULT ''");
+      addColumn(db, 'suppliers', 'deleted_at', 'TEXT');
+      db.exec("UPDATE suppliers SET updated_at = created_at WHERE updated_at = ''");
 
-export function createProduct(data: any) {
-  const d = getDb();
-  const id = uuidv4();
-  d.prepare('INSERT INTO products (id, name, price, cost_price, stock, min_stock, category, barcode) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(id, data.name, data.price, data.cost_price || 0, data.stock || 0, data.min_stock || 5, data.category || 'Umum', data.barcode || '');
-  return getProductById(id);
-}
+      addColumn(db, 'transactions', 'invoice_no', 'TEXT');
+      addColumn(db, 'transactions', 'discount_amount', 'INTEGER NOT NULL DEFAULT 0');
+      addColumn(db, 'transactions', 'total_cost', 'INTEGER NOT NULL DEFAULT 0');
+      addColumn(db, 'transactions', 'voided_at', 'TEXT');
+      addColumn(db, 'transactions', 'voided_by', 'TEXT');
+      addColumn(db, 'transactions', 'void_reason', 'TEXT');
 
-export function updateProduct(id: string, data: any) {
-  const d = getDb();
-  d.prepare("UPDATE products SET name=?, price=?, cost_price=?, stock=?, min_stock=?, category=?, barcode=?, updated_at=datetime('now') WHERE id=?").run(data.name, data.price, data.cost_price || 0, data.stock, data.min_stock || 5, data.category, data.barcode || '', id);
-  return getProductById(id);
-}
+      addColumn(db, 'stock_history', 'supplier_id', 'TEXT');
+      addColumn(db, 'stock_history', 'stock_before', 'INTEGER NOT NULL DEFAULT 0');
+      addColumn(db, 'stock_history', 'stock_after', 'INTEGER NOT NULL DEFAULT 0');
 
-export function deleteProduct(id: string) {
-  getDb().prepare('DELETE FROM products WHERE id = ?').run(id);
-}
+      addColumn(db, 'expenses', 'updated_at', "TEXT NOT NULL DEFAULT ''");
+      db.exec("UPDATE expenses SET updated_at = created_at WHERE updated_at = ''");
 
-export function stockIn(productId: string, quantity: number, notes: string, userId: string) {
-  const d = getDb();
-  d.prepare('UPDATE products SET stock = stock + ?, updated_at = datetime(\'now\') WHERE id = ?').run(quantity, productId);
-  d.prepare('INSERT INTO stock_history (id, product_id, type, quantity, notes, created_by) VALUES (?, ?, ?, ?, ?, ?)').run(uuidv4(), productId, 'in', quantity, notes, userId);
-  return getProductById(productId);
-}
+      addColumn(db, 'settings', 'points_per_amount', 'INTEGER NOT NULL DEFAULT 10000');
+      addColumn(db, 'settings', 'tz_offset_minutes', 'INTEGER NOT NULL DEFAULT 420');
+      addColumn(db, 'settings', 'currency', "TEXT NOT NULL DEFAULT 'IDR'");
 
-// ===== CUSTOMERS =====
-export function getAllCustomers(search?: string) {
-  const d = getDb();
-  let query = 'SELECT * FROM customers WHERE 1=1';
-  const params: string[] = [];
-  if (search) { query += ' AND (name LIKE ? OR phone LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
-  query += ' ORDER BY name ASC';
-  return d.prepare(query).all(...params) as any[];
-}
+      // Isi nilai turunan untuk data yang sudah ada sebelum migrasi ini.
+      db.exec(`
+        UPDATE transactions SET total_cost = COALESCE(
+          (SELECT SUM(ti.cost_price * ti.quantity) FROM transaction_items ti WHERE ti.transaction_id = transactions.id), 0
+        ) WHERE total_cost = 0;
 
-export function getCustomerById(id: string) {
-  return getDb().prepare('SELECT * FROM customers WHERE id = ?').get(id) as any;
-}
+        UPDATE transactions SET discount_amount = CASE
+          WHEN discount_type = 'percent' THEN CAST(ROUND(subtotal * discount / 100.0) AS INTEGER)
+          ELSE discount
+        END WHERE discount_amount = 0;
+      `);
 
-export function createCustomer(data: any) {
-  const d = getDb();
-  const id = uuidv4();
-  d.prepare('INSERT INTO customers (id, name, phone, email, address) VALUES (?, ?, ?, ?, ?)').run(id, data.name, data.phone || '', data.email || '', data.address || '');
-  return getCustomerById(id);
-}
-
-export function updateCustomer(id: string, data: any) {
-  const d = getDb();
-  d.prepare('UPDATE customers SET name=?, phone=?, email=?, address=? WHERE id=?').run(data.name, data.phone, data.email, data.address, id);
-  return getCustomerById(id);
-}
-
-export function deleteCustomer(id: string) {
-  getDb().prepare('DELETE FROM customers WHERE id = ?').run(id);
-}
-
-// ===== SUPPLIERS =====
-export function getAllSuppliers(search?: string) {
-  const d = getDb();
-  let query = 'SELECT * FROM suppliers WHERE 1=1';
-  const params: string[] = [];
-  if (search) { query += ' AND (name LIKE ? OR contact_person LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
-  query += ' ORDER BY name ASC';
-  return d.prepare(query).all(...params) as any[];
-}
-
-export function getSupplierById(id: string) {
-  return getDb().prepare('SELECT * FROM suppliers WHERE id = ?').get(id) as any;
-}
-
-export function createSupplier(data: any) {
-  const d = getDb();
-  const id = uuidv4();
-  d.prepare('INSERT INTO suppliers (id, name, phone, email, address, contact_person) VALUES (?, ?, ?, ?, ?, ?)').run(id, data.name, data.phone || '', data.email || '', data.address || '', data.contact_person || '');
-  return getSupplierById(id);
-}
-
-export function updateSupplier(id: string, data: any) {
-  const d = getDb();
-  d.prepare('UPDATE suppliers SET name=?, phone=?, email=?, address=?, contact_person=? WHERE id=?').run(data.name, data.phone, data.email, data.address, data.contact_person, id);
-  return getSupplierById(id);
-}
-
-export function deleteSupplier(id: string) {
-  getDb().prepare('DELETE FROM suppliers WHERE id = ?').run(id);
-}
-
-// ===== TRANSACTIONS =====
-export function getTransactions(limit = 50, offset = 0, status?: string) {
-  const d = getDb();
-  let query = `SELECT t.*, c.name as customer_name, u.name as user_name FROM transactions t
-    LEFT JOIN customers c ON t.customer_id = c.id
-    JOIN users u ON t.user_id = u.id WHERE 1=1`;
-  const params: any[] = [];
-  if (status) { query += ' AND t.status = ?'; params.push(status); }
-  query += ' ORDER BY t.created_at DESC LIMIT ? OFFSET ?';
-  params.push(limit, offset);
-  const transactions = d.prepare(query).all(...params) as any[];
-  return transactions.map(t => ({
-    ...t,
-    items: d.prepare('SELECT * FROM transaction_items WHERE transaction_id = ?').all(t.id) as any[],
-  }));
-}
-
-export function getTransactionById(id: string) {
-  const d = getDb();
-  const t = d.prepare(`SELECT t.*, c.name as customer_name, u.name as user_name FROM transactions t
-    LEFT JOIN customers c ON t.customer_id = c.id
-    JOIN users u ON t.user_id = u.id WHERE t.id = ?`).get(id) as any;
-  if (!t) return null;
-  t.items = d.prepare('SELECT * FROM transaction_items WHERE transaction_id = ?').all(id) as any[];
-  return t;
-}
-
-export function createTransaction(data: {
-  items: { product_id: string; quantity: number; discount?: number; discount_type?: string }[];
-  customer_id?: string;
-  user_id: string;
-  discount?: number;
-  discount_type?: string;
-  tax_rate?: number;
-  payment_method: string;
-  amount_paid: number;
-  notes?: string;
-}) {
-  const d = getDb();
-  const id = uuidv4();
-  const settings = getSettings();
-  let subtotal = 0;
-
-  const itemsWithDetails = data.items.map(item => {
-    const product = getProductById(item.product_id);
-    if (!product) throw new Error(`Produk dengan ID ${item.product_id} tidak ditemukan`);
-    if (product.stock < item.quantity) throw new Error(`Stok ${product.name} tidak cukup (tersedia: ${product.stock}, diminta: ${item.quantity})`);
-    if (item.quantity <= 0) throw new Error(`Quantity tidak valid untuk ${product.name}`);
-    let itemSubtotal = product.price * item.quantity;
-    if (item.discount) {
-      if (item.discount_type === 'percent') {
-        itemSubtotal -= Math.round(itemSubtotal * item.discount / 100);
-      } else {
-        itemSubtotal -= item.discount * item.quantity;
+      // Nomor invoice untuk transaksi lama, urut berdasarkan waktu dibuat.
+      const legacy = db
+        .prepare('SELECT id, created_at FROM transactions WHERE invoice_no IS NULL ORDER BY created_at ASC')
+        .all() as { id: string; created_at: string }[];
+      const setInvoice = db.prepare('UPDATE transactions SET invoice_no = ? WHERE id = ?');
+      const perDay = new Map<string, number>();
+      for (const tx of legacy) {
+        const day = (tx.created_at ?? '').slice(0, 10).replace(/-/g, '') || '00000000';
+        const next = (perDay.get(day) ?? 0) + 1;
+        perDay.set(day, next);
+        setInvoice.run(`INV-${day}-${String(next).padStart(4, '0')}`, tx.id);
       }
-    }
-    subtotal += itemSubtotal;
-    return {
-      product_id: item.product_id,
-      product_name: product.name,
-      price: product.price,
-      cost_price: product.cost_price || 0,
-      quantity: item.quantity,
-      discount: item.discount || 0,
-      discount_type: item.discount_type || 'amount',
-      subtotal: itemSubtotal,
-    };
-  });
 
-  let afterDiscount = subtotal;
-  const txDiscount = data.discount || 0;
-  if (txDiscount > 0) {
-    if (data.discount_type === 'percent') {
-      afterDiscount -= Math.round(subtotal * txDiscount / 100);
-    } else {
-      afterDiscount -= txDiscount;
-    }
+      db.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_invoice ON transactions(invoice_no);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_products_barcode
+          ON products(barcode) WHERE barcode <> '' AND deleted_at IS NULL;
+        CREATE INDEX IF NOT EXISTS idx_products_name ON products(name);
+        CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
+        CREATE INDEX IF NOT EXISTS idx_products_deleted ON products(deleted_at);
+        CREATE INDEX IF NOT EXISTS idx_transactions_created ON transactions(created_at);
+        CREATE INDEX IF NOT EXISTS idx_transactions_customer ON transactions(customer_id);
+        CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id);
+        CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status);
+        CREATE INDEX IF NOT EXISTS idx_transaction_items_tid ON transaction_items(transaction_id);
+        CREATE INDEX IF NOT EXISTS idx_transaction_items_pid ON transaction_items(product_id);
+        CREATE INDEX IF NOT EXISTS idx_stock_history_pid ON stock_history(product_id);
+        CREATE INDEX IF NOT EXISTS idx_stock_history_created ON stock_history(created_at);
+        CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(date);
+        CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone);
+        CREATE INDEX IF NOT EXISTS idx_customers_deleted ON customers(deleted_at);
+      `);
+    },
+  },
+];
+
+function migrate(db: Database.Database): void {
+  const current = (db.pragma('user_version', { simple: true }) as number) ?? 0;
+  for (const migration of migrations) {
+    if (migration.version <= current) continue;
+    db.transaction(() => {
+      migration.up(db);
+      db.pragma(`user_version = ${migration.version}`);
+    })();
   }
-
-  const taxRate = data.tax_rate ?? settings.tax_rate;
-  const taxAmount = Math.round(afterDiscount * taxRate / 100);
-  const total = afterDiscount + taxAmount;
-  const change = data.amount_paid - total;
-
-  const createTx = d.transaction(() => {
-    // Cek stok di dalam transaction (cegah race condition)
-    for (const item of itemsWithDetails) {
-      const currentStock = d.prepare('SELECT stock FROM products WHERE id = ?').get(item.product_id) as any;
-      if (!currentStock || currentStock.stock < item.quantity) {
-        throw new Error(`Stok ${item.product_name} tidak cukup (tersedia: ${currentStock?.stock || 0}, diminta: ${item.quantity})`);
-      }
-    }
-
-    d.prepare(`INSERT INTO transactions (id, customer_id, user_id, subtotal, discount, discount_type, tax_rate, tax_amount, total, payment_method, amount_paid, change, notes, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed')`).run(
-      id, data.customer_id || null, data.user_id, subtotal, txDiscount, data.discount_type || 'amount', taxRate, taxAmount, total, data.payment_method, data.amount_paid, change, data.notes || ''
-    );
-
-    const itemStmt = d.prepare('INSERT INTO transaction_items (id, transaction_id, product_id, product_name, price, cost_price, quantity, discount, discount_type, subtotal) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-    for (const item of itemsWithDetails) {
-      itemStmt.run(uuidv4(), id, item.product_id, item.product_name, item.price, item.cost_price, item.quantity, item.discount, item.discount_type, item.subtotal);
-      d.prepare('UPDATE products SET stock = stock - ?, updated_at = datetime(\'now\') WHERE id = ?').run(item.quantity, item.product_id);
-      d.prepare('INSERT INTO stock_history (id, product_id, type, quantity, notes, created_by) VALUES (?, ?, ?, ?, ?, ?)').run(uuidv4(), item.product_id, 'sale', -item.quantity, `Transaksi #${id.slice(0, 8)}`, data.user_id);
-    }
-
-    if (data.customer_id) {
-      const points = Math.floor(total / 10000);
-      d.prepare('UPDATE customers SET points = points + ?, total_spent = total_spent + ?, visit_count = visit_count + 1 WHERE id = ?').run(points, total, data.customer_id);
-    }
-  });
-
-  createTx();
-  return getTransactionById(id);
+  seedIfEmpty(db);
 }
 
-export function voidTransaction(id: string, userId: string) {
-  const d = getDb();
-  const tx = getTransactionById(id);
-  if (!tx || tx.status === 'voided') return null;
+function seedIfEmpty(db: Database.Database): void {
+  const { count } = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
+  if (count > 0) return;
 
-  d.transaction(() => {
-    d.prepare("UPDATE transactions SET status = 'voided' WHERE id = ?").run(id);
-    for (const item of tx.items) {
-      d.prepare('UPDATE products SET stock = stock + ?, updated_at = datetime(\'now\') WHERE id = ?').run(item.quantity, item.product_id);
-      d.prepare('INSERT INTO stock_history (id, product_id, type, quantity, notes, created_by) VALUES (?, ?, ?, ?, ?, ?)').run(uuidv4(), item.product_id, 'adjustment', item.quantity, `Void transaksi #${id.slice(0, 8)}`, userId);
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? 'admin123';
+  const cashierPassword = process.env.SEED_KASIR_PASSWORD ?? 'kasir123';
+
+  db.transaction(() => {
+    const insertUser = db.prepare(
+      "INSERT INTO users (id, name, email, password, role, updated_at) VALUES (?, ?, ?, ?, ?, datetime('now'))",
+    );
+    insertUser.run(randomUUID(), 'Admin', 'admin@kasir.com', bcrypt.hashSync(adminPassword, BCRYPT_ROUNDS), 'ADMIN');
+    insertUser.run(randomUUID(), 'Kasir 1', 'kasir@kasir.com', bcrypt.hashSync(cashierPassword, BCRYPT_ROUNDS), 'KASIR');
+
+    db.prepare('INSERT OR IGNORE INTO settings (id) VALUES (?)').run('default');
+
+    const products: [string, number, number, number, string][] = [
+      ['Nasi Goreng Spesial', 18000, 10000, 50, 'Makanan'],
+      ['Mie Ayam Bakso', 15000, 8000, 40, 'Makanan'],
+      ['Ayam Geprek', 20000, 12000, 30, 'Makanan'],
+      ['Soto Ayam', 14000, 7000, 35, 'Makanan'],
+      ['Nasi Uduk', 12000, 6000, 45, 'Makanan'],
+      ['Es Teh Manis', 5000, 1500, 100, 'Minuman'],
+      ['Es Jeruk', 7000, 3000, 80, 'Minuman'],
+      ['Kopi Hitam', 8000, 3000, 60, 'Minuman'],
+      ['Kopi Susu', 12000, 5000, 50, 'Minuman'],
+      ['Air Mineral', 3000, 1500, 200, 'Minuman'],
+      ['Kerupuk', 2000, 800, 150, 'Snack'],
+      ['Risoles', 5000, 2500, 45, 'Snack'],
+      ['Martabak Mini', 8000, 4000, 25, 'Snack'],
+      ['Roti Bakar', 10000, 5000, 30, 'Snack'],
+      ['Pisang Goreng', 3000, 1000, 3, 'Snack'],
+    ];
+    const insertProduct = db.prepare(
+      'INSERT INTO products (id, name, price, cost_price, stock, category) VALUES (?, ?, ?, ?, ?, ?)',
+    );
+    for (const [name, price, cost, stock, category] of products) {
+      insertProduct.run(randomUUID(), name, price, cost, stock, category);
     }
-    if (tx.customer_id) {
-      const points = Math.floor(tx.total / 10000);
-      d.prepare('UPDATE customers SET points = points - ?, total_spent = total_spent - ?, visit_count = visit_count - 1 WHERE id = ?').run(points, tx.total, tx.customer_id);
-    }
+
+    const insertCustomer = db.prepare(
+      "INSERT INTO customers (id, name, phone, email, updated_at) VALUES (?, ?, ?, ?, datetime('now'))",
+    );
+    insertCustomer.run(randomUUID(), 'Budi Santoso', '081234567890', 'budi@mail.com');
+    insertCustomer.run(randomUUID(), 'Siti Rahayu', '085678901234', 'siti@mail.com');
+    insertCustomer.run(randomUUID(), 'Ahmad Hidayat', '087890123456', '');
+
+    const insertSupplier = db.prepare(
+      "INSERT INTO suppliers (id, name, phone, contact_person, updated_at) VALUES (?, ?, ?, ?, datetime('now'))",
+    );
+    insertSupplier.run(randomUUID(), 'PT Sumber Rejeki', '021-1234567', 'Pak Joko');
+    insertSupplier.run(randomUUID(), 'CV Maju Bersama', '021-7654321', 'Bu Ani');
   })();
-
-  return getTransactionById(id);
 }
 
-// ===== EXPENSES =====
-export function getExpenses(limit = 50, offset = 0, category?: string, startDate?: string, endDate?: string) {
-  const d = getDb();
-  let query = `SELECT e.*, u.name as user_name FROM expenses e JOIN users u ON e.created_by = u.id WHERE 1=1`;
-  const params: any[] = [];
-  if (category) { query += ' AND e.category = ?'; params.push(category); }
-  if (startDate) { query += ' AND e.date >= ?'; params.push(startDate); }
-  if (endDate) { query += ' AND e.date <= ?'; params.push(endDate); }
-  query += ' ORDER BY e.date DESC, e.created_at DESC LIMIT ? OFFSET ?';
-  params.push(limit, offset);
-  return d.prepare(query).all(...params) as any[];
+// ============================================================================
+// UTILITAS
+// ============================================================================
+
+/** `%` dan `_` bermakna khusus di LIKE; escape supaya pencarian literal. */
+function escapeLike(input: string): string {
+  return input.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
 
-export function createExpense(data: any) {
-  const d = getDb();
-  const id = uuidv4();
-  d.prepare('INSERT INTO expenses (id, description, amount, category, date, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)').run(id, data.description, data.amount, data.category || 'Lainnya', data.date, data.notes || '', data.created_by);
-  return d.prepare('SELECT e.*, u.name as user_name FROM expenses e JOIN users u ON e.created_by = u.id WHERE e.id = ?').get(id) as any;
+function likeParam(search: string): string {
+  return `%${escapeLike(search.trim())}%`;
 }
 
-export function deleteExpense(id: string) {
-  getDb().prepare('DELETE FROM expenses WHERE id = ?').run(id);
-}
+let settingsCache: Settings | null = null;
 
-// ===== USERS =====
-export function getAllUsers() {
-  return getDb().prepare('SELECT id, name, email, role, created_at FROM users ORDER BY name').all() as any[];
-}
-
-export function getUserById(id: string) {
-  return getDb().prepare('SELECT id, name, email, role, created_at FROM users WHERE id = ?').get(id) as any;
-}
-
-export function getUserByEmail(email: string) {
-  return getDb().prepare('SELECT * FROM users WHERE email = ?').get(email) as any;
-}
-
-export function createUser(data: any) {
-  const d = getDb();
-  const id = uuidv4();
-  const hashed = bcrypt.hashSync(data.password, 10);
-  d.prepare('INSERT INTO users (id, name, email, password, role) VALUES (?, ?, ?, ?, ?)').run(id, data.name, data.email, hashed, data.role || 'KASIR');
-  return getUserById(id);
-}
-
-export function updateUser(id: string, data: any) {
-  const d = getDb();
-  if (data.password) {
-    const hashed = bcrypt.hashSync(data.password, 10);
-    d.prepare('UPDATE users SET name=?, email=?, password=?, role=? WHERE id=?').run(data.name, data.email, hashed, data.role, id);
-  } else {
-    d.prepare('UPDATE users SET name=?, email=?, role=? WHERE id=?').run(data.name, data.email, data.role, id);
+export function getSettings(): Settings {
+  if (settingsCache) return settingsCache;
+  const db = getDb();
+  let row = db.prepare('SELECT * FROM settings WHERE id = ?').get('default') as Settings | undefined;
+  if (!row) {
+    db.prepare('INSERT INTO settings (id) VALUES (?)').run('default');
+    row = db.prepare('SELECT * FROM settings WHERE id = ?').get('default') as Settings;
   }
-  return getUserById(id);
+  settingsCache = row;
+  return row;
 }
 
-export function deleteUser(id: string) {
-  getDb().prepare('DELETE FROM users WHERE id = ?').run(id);
+/**
+ * Timestamp disimpan dalam UTC (`datetime('now')`), tapi "hari ini" bagi toko
+ * mengikuti waktu lokal. Semua pengelompokan tanggal digeser sebesar offset ini,
+ * jadi penjualan jam 01:00 WIB masuk ke hari yang benar.
+ */
+function tzModifier(): string {
+  const raw = getSettings().tz_offset_minutes;
+  const minutes = Number.isInteger(raw) ? raw : 420;
+  return `${minutes >= 0 ? '+' : ''}${minutes} minutes`;
 }
 
-// ===== SETTINGS =====
-export function getSettings() {
-  const d = getDb();
-  let settings = d.prepare('SELECT * FROM settings WHERE id = ?').get('default') as any;
-  if (!settings) {
-    d.prepare('INSERT INTO settings (id) VALUES (?)').run('default');
-    settings = d.prepare('SELECT * FROM settings WHERE id = ?').get('default') as any;
-  }
-  return settings;
+/** Ekspresi SQL untuk mengambil tanggal lokal dari kolom timestamp UTC. */
+function localDate(column: string): string {
+  return `date(${column}, '${tzModifier()}')`;
 }
 
-export function updateSettings(data: any) {
-  const d = getDb();
-  d.prepare('UPDATE settings SET store_name=?, store_address=?, store_phone=?, tax_rate=?, receipt_footer=?, low_stock_threshold=? WHERE id=?').run(data.store_name, data.store_address || '', data.store_phone || '', data.tax_rate, data.receipt_footer || '', data.low_stock_threshold || 5, 'default');
+/** Tanggal hari ini (YYYY-MM-DD) menurut zona waktu toko. */
+export function todayLocal(): string {
+  const offset = getSettings().tz_offset_minutes;
+  return new Date(Date.now() + offset * 60_000).toISOString().slice(0, 10);
+}
+
+// ============================================================================
+// SETTINGS
+// ============================================================================
+
+export interface SettingsInput {
+  store_name: string;
+  store_address: string;
+  store_phone: string;
+  store_logo: string;
+  tax_rate: number;
+  receipt_footer: string;
+  low_stock_threshold: number;
+  points_per_amount: number;
+  tz_offset_minutes: number;
+}
+
+export function updateSettings(data: SettingsInput): Settings {
+  getDb()
+    .prepare(
+      `UPDATE settings SET store_name=?, store_address=?, store_phone=?, store_logo=?,
+       tax_rate=?, receipt_footer=?, low_stock_threshold=?, points_per_amount=?, tz_offset_minutes=?
+       WHERE id='default'`,
+    )
+    .run(
+      data.store_name,
+      data.store_address,
+      data.store_phone,
+      data.store_logo,
+      data.tax_rate,
+      data.receipt_footer,
+      data.low_stock_threshold,
+      data.points_per_amount,
+      data.tz_offset_minutes,
+    );
+  settingsCache = null;
   return getSettings();
 }
 
-// ===== STOCK HISTORY =====
-export function getStockHistory(productId?: string, limit = 50) {
-  const d = getDb();
-  let query = `SELECT sh.*, p.name as product_name, u.name as user_name FROM stock_history sh
-    JOIN products p ON sh.product_id = p.id
-    JOIN users u ON sh.created_by = u.id WHERE 1=1`;
-  const params: any[] = [];
-  if (productId) { query += ' AND sh.product_id = ?'; params.push(productId); }
-  query += ' ORDER BY sh.created_at DESC LIMIT ?';
-  params.push(limit);
-  return d.prepare(query).all(...params) as any[];
+// ============================================================================
+// PRODUCTS
+// ============================================================================
+
+export interface ProductInput {
+  name: string;
+  price: number;
+  cost_price: number;
+  stock: number;
+  min_stock: number;
+  category: string;
+  barcode: string;
+  unit: string;
 }
 
-// ===== DASHBOARD =====
-export function getDashboardStats(userId?: string, userRole?: string) {
-  const d = getDb();
-  const today = new Date().toISOString().split('T')[0];
+export interface ProductQuery {
+  search?: string;
+  category?: string;
+  lowStock?: boolean;
+  limit: number;
+  offset: number;
+}
 
-  const todayStats = d.prepare(`
-    SELECT COALESCE(SUM(total), 0) as sales, COUNT(*) as count
-    FROM transactions WHERE date(created_at) = date(?) AND status = 'completed'
-  `).get(today) as any;
+export function listProducts(query: ProductQuery): Paginated<Product> {
+  const db = getDb();
+  const where: string[] = ['deleted_at IS NULL'];
+  const params: unknown[] = [];
 
-  const todayProfit = d.prepare(`
-    SELECT COALESCE(SUM(ti.subtotal - (ti.cost_price * ti.quantity)), 0) as profit
-    FROM transaction_items ti JOIN transactions t ON ti.transaction_id = t.id
-    WHERE date(t.created_at) = date(?) AND t.status = 'completed'
-  `).get(today) as any;
-
-  const todayCustomers = d.prepare(`
-    SELECT COUNT(DISTINCT customer_id) as count FROM transactions
-    WHERE date(created_at) = date(?) AND status = 'completed' AND customer_id IS NOT NULL
-  `).get(today) as any;
-
-  const totalProducts = d.prepare('SELECT COUNT(*) as count FROM products').get() as any;
-  const lowStock = d.prepare('SELECT COUNT(*) as count FROM products WHERE stock <= min_stock').get() as any;
-
-  const recentTransactions = d.prepare(`
-    SELECT t.*, c.name as customer_name, u.name as user_name FROM transactions t
-    LEFT JOIN customers c ON t.customer_id = c.id JOIN users u ON t.user_id = u.id
-    ORDER BY t.created_at DESC LIMIT 5
-  `).all() as any[];
-  for (const t of recentTransactions) {
-    t.items = d.prepare('SELECT * FROM transaction_items WHERE transaction_id = ?').all(t.id) as any[];
+  if (query.search) {
+    where.push("(name LIKE ? ESCAPE '\\' OR barcode LIKE ? ESCAPE '\\')");
+    params.push(likeParam(query.search), likeParam(query.search));
+  }
+  if (query.category && query.category !== 'Semua') {
+    where.push('category = ?');
+    params.push(query.category);
+  }
+  if (query.lowStock) {
+    where.push('stock <= min_stock');
   }
 
-  const topProducts = d.prepare(`
-    SELECT ti.product_name as name, SUM(ti.quantity) as quantity, SUM(ti.subtotal) as revenue
-    FROM transaction_items ti JOIN transactions t ON ti.transaction_id = t.id
-    WHERE date(t.created_at) = date(?) AND t.status = 'completed'
-    GROUP BY ti.product_id ORDER BY quantity DESC LIMIT 5
-  `).all(today) as any[];
+  const clause = `WHERE ${where.join(' AND ')}`;
+  const { total } = db.prepare(`SELECT COUNT(*) as total FROM products ${clause}`).get(...params) as {
+    total: number;
+  };
+  const data = db
+    .prepare(`SELECT * FROM products ${clause} ORDER BY name ASC LIMIT ? OFFSET ?`)
+    .all(...params, query.limit, query.offset) as Product[];
 
-  const salesChart: any[] = [];
+  return { data, total, limit: query.limit, offset: query.offset };
+}
+
+export function getProductById(id: string): Product | null {
+  return (getDb().prepare('SELECT * FROM products WHERE id = ? AND deleted_at IS NULL').get(id) as Product) ?? null;
+}
+
+export function getProductByBarcode(barcode: string): Product | null {
+  if (!barcode.trim()) return null;
+  return (
+    (getDb()
+      .prepare("SELECT * FROM products WHERE barcode = ? AND barcode <> '' AND deleted_at IS NULL")
+      .get(barcode.trim()) as Product) ?? null
+  );
+}
+
+export function createProduct(data: ProductInput): Product {
+  const id = randomUUID();
+  getDb()
+    .prepare(
+      `INSERT INTO products (id, name, price, cost_price, stock, min_stock, category, barcode, unit)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(id, data.name, data.price, data.cost_price, data.stock, data.min_stock, data.category, data.barcode, data.unit);
+  return getProductById(id)!;
+}
+
+/**
+ * Mengubah stok lewat form produk tetap dicatat sebagai penyesuaian, supaya
+ * tidak ada jalur diam-diam untuk mengubah stok tanpa jejak audit.
+ */
+export function updateProduct(id: string, data: ProductInput, userId: string): Product {
+  const db = getDb();
+  const existing = getProductById(id);
+  if (!existing) throw notFound('Produk tidak ditemukan');
+
+  db.transaction(() => {
+    db.prepare(
+      `UPDATE products SET name=?, price=?, cost_price=?, stock=?, min_stock=?, category=?, barcode=?, unit=?,
+       updated_at=datetime('now') WHERE id=?`,
+    ).run(
+      data.name,
+      data.price,
+      data.cost_price,
+      data.stock,
+      data.min_stock,
+      data.category,
+      data.barcode,
+      data.unit,
+      id,
+    );
+
+    if (data.stock !== existing.stock) {
+      recordStockMovement(db, {
+        productId: id,
+        type: 'adjustment',
+        quantity: data.stock - existing.stock,
+        stockBefore: existing.stock,
+        stockAfter: data.stock,
+        notes: 'Penyesuaian lewat form edit produk',
+        userId,
+      });
+    }
+  })();
+
+  return getProductById(id)!;
+}
+
+/**
+ * Soft delete. Produk yang pernah terjual masih direferensikan oleh riwayat
+ * transaksi dan stok, jadi menghapus barisnya akan merusak laporan.
+ */
+export function deleteProduct(id: string): void {
+  const product = getProductById(id);
+  if (!product) throw notFound('Produk tidak ditemukan');
+  getDb()
+    .prepare("UPDATE products SET deleted_at = datetime('now'), is_active = 0 WHERE id = ?")
+    .run(id);
+}
+
+export function getCategories(): string[] {
+  const rows = getDb()
+    .prepare('SELECT DISTINCT category FROM products WHERE deleted_at IS NULL ORDER BY category')
+    .all() as { category: string }[];
+  return rows.map((r) => r.category);
+}
+
+export function getLowStockProducts(limit = 50): Product[] {
+  return getDb()
+    .prepare('SELECT * FROM products WHERE deleted_at IS NULL AND stock <= min_stock ORDER BY stock ASC LIMIT ?')
+    .all(limit) as Product[];
+}
+
+// ============================================================================
+// PERGERAKAN STOK
+// ============================================================================
+
+interface StockMovement {
+  productId: string;
+  type: StockMovementType;
+  /** Positif untuk penambahan, negatif untuk pengurangan. */
+  quantity: number;
+  stockBefore: number;
+  stockAfter: number;
+  notes: string;
+  userId: string;
+  supplierId?: string | null;
+}
+
+function recordStockMovement(db: Database.Database, m: StockMovement): void {
+  db.prepare(
+    `INSERT INTO stock_history (id, product_id, supplier_id, type, quantity, stock_before, stock_after, notes, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(randomUUID(), m.productId, m.supplierId ?? null, m.type, m.quantity, m.stockBefore, m.stockAfter, m.notes, m.userId);
+}
+
+export function stockIn(
+  productId: string,
+  quantity: number,
+  notes: string,
+  userId: string,
+  supplierId?: string | null,
+): Product {
+  const db = getDb();
+  return db.transaction(() => {
+    const product = getProductById(productId);
+    if (!product) throw notFound('Produk tidak ditemukan');
+    const after = product.stock + quantity;
+    db.prepare("UPDATE products SET stock = ?, updated_at = datetime('now') WHERE id = ?").run(after, productId);
+    recordStockMovement(db, {
+      productId,
+      type: 'in',
+      quantity,
+      stockBefore: product.stock,
+      stockAfter: after,
+      notes,
+      userId,
+      supplierId,
+    });
+    return getProductById(productId)!;
+  })();
+}
+
+/** Barang keluar non-penjualan: rusak, kedaluwarsa, hilang, atau retur ke supplier. */
+export function stockOut(productId: string, quantity: number, notes: string, userId: string): Product {
+  const db = getDb();
+  return db.transaction(() => {
+    const product = getProductById(productId);
+    if (!product) throw notFound('Produk tidak ditemukan');
+    if (product.stock < quantity) {
+      throw conflict(`Stok ${product.name} tidak cukup (tersedia ${product.stock}, diminta ${quantity})`);
+    }
+    const after = product.stock - quantity;
+    db.prepare("UPDATE products SET stock = ?, updated_at = datetime('now') WHERE id = ?").run(after, productId);
+    recordStockMovement(db, {
+      productId,
+      type: 'out',
+      quantity: -quantity,
+      stockBefore: product.stock,
+      stockAfter: after,
+      notes,
+      userId,
+    });
+    return getProductById(productId)!;
+  })();
+}
+
+/** Stok opname: `newStock` adalah hasil hitung fisik, bukan selisih. */
+export function stockAdjust(productId: string, newStock: number, notes: string, userId: string): Product {
+  const db = getDb();
+  return db.transaction(() => {
+    const product = getProductById(productId);
+    if (!product) throw notFound('Produk tidak ditemukan');
+    if (product.stock === newStock) return product;
+    db.prepare("UPDATE products SET stock = ?, updated_at = datetime('now') WHERE id = ?").run(newStock, productId);
+    recordStockMovement(db, {
+      productId,
+      type: 'adjustment',
+      quantity: newStock - product.stock,
+      stockBefore: product.stock,
+      stockAfter: newStock,
+      notes,
+      userId,
+    });
+    return getProductById(productId)!;
+  })();
+}
+
+export function listStockHistory(params: {
+  productId?: string;
+  type?: string;
+  limit: number;
+  offset: number;
+}): Paginated<StockHistoryWithRelations> {
+  const db = getDb();
+  const where: string[] = ['1=1'];
+  const values: unknown[] = [];
+  if (params.productId) {
+    where.push('sh.product_id = ?');
+    values.push(params.productId);
+  }
+  if (params.type) {
+    where.push('sh.type = ?');
+    values.push(params.type);
+  }
+  const clause = `WHERE ${where.join(' AND ')}`;
+
+  const { total } = db.prepare(`SELECT COUNT(*) as total FROM stock_history sh ${clause}`).get(...values) as {
+    total: number;
+  };
+  const data = db
+    .prepare(
+      `SELECT sh.*, p.name as product_name, s.name as supplier_name, u.name as user_name
+       FROM stock_history sh
+       JOIN products p ON sh.product_id = p.id
+       LEFT JOIN suppliers s ON sh.supplier_id = s.id
+       JOIN users u ON sh.created_by = u.id
+       ${clause} ORDER BY sh.created_at DESC, sh.rowid DESC LIMIT ? OFFSET ?`,
+    )
+    .all(...values, params.limit, params.offset) as StockHistoryWithRelations[];
+
+  return { data, total, limit: params.limit, offset: params.offset };
+}
+
+// ============================================================================
+// CUSTOMERS
+// ============================================================================
+
+export interface CustomerInput {
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+}
+
+export function listCustomers(params: { search?: string; limit: number; offset: number }): Paginated<Customer> {
+  const db = getDb();
+  const where: string[] = ['deleted_at IS NULL'];
+  const values: unknown[] = [];
+  if (params.search) {
+    where.push("(name LIKE ? ESCAPE '\\' OR phone LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\')");
+    const like = likeParam(params.search);
+    values.push(like, like, like);
+  }
+  const clause = `WHERE ${where.join(' AND ')}`;
+
+  const { total } = db.prepare(`SELECT COUNT(*) as total FROM customers ${clause}`).get(...values) as {
+    total: number;
+  };
+  const data = db
+    .prepare(`SELECT * FROM customers ${clause} ORDER BY name ASC LIMIT ? OFFSET ?`)
+    .all(...values, params.limit, params.offset) as Customer[];
+  return { data, total, limit: params.limit, offset: params.offset };
+}
+
+export function getCustomerById(id: string): Customer | null {
+  return (getDb().prepare('SELECT * FROM customers WHERE id = ? AND deleted_at IS NULL').get(id) as Customer) ?? null;
+}
+
+export function createCustomer(data: CustomerInput): Customer {
+  const id = randomUUID();
+  getDb()
+    .prepare(
+      "INSERT INTO customers (id, name, phone, email, address, updated_at) VALUES (?, ?, ?, ?, ?, datetime('now'))",
+    )
+    .run(id, data.name, data.phone, data.email, data.address);
+  return getCustomerById(id)!;
+}
+
+export function updateCustomer(id: string, data: CustomerInput): Customer {
+  if (!getCustomerById(id)) throw notFound('Pelanggan tidak ditemukan');
+  getDb()
+    .prepare("UPDATE customers SET name=?, phone=?, email=?, address=?, updated_at=datetime('now') WHERE id=?")
+    .run(data.name, data.phone, data.email, data.address, id);
+  return getCustomerById(id)!;
+}
+
+export function deleteCustomer(id: string): void {
+  if (!getCustomerById(id)) throw notFound('Pelanggan tidak ditemukan');
+  getDb().prepare("UPDATE customers SET deleted_at = datetime('now') WHERE id = ?").run(id);
+}
+
+export function redeemPoints(id: string, points: number, notes: string): Customer {
+  const db = getDb();
+  return db.transaction(() => {
+    const customer = getCustomerById(id);
+    if (!customer) throw notFound('Pelanggan tidak ditemukan');
+    if (customer.points < points) {
+      throw conflict(`Poin tidak cukup (tersedia ${customer.points}, diminta ${points})`);
+    }
+    db.prepare("UPDATE customers SET points = points - ?, updated_at = datetime('now') WHERE id = ?").run(points, id);
+    void notes;
+    return getCustomerById(id)!;
+  })();
+}
+
+// ============================================================================
+// SUPPLIERS
+// ============================================================================
+
+export interface SupplierInput {
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  contact_person: string;
+}
+
+export function listSuppliers(params: { search?: string; limit: number; offset: number }): Paginated<Supplier> {
+  const db = getDb();
+  const where: string[] = ['deleted_at IS NULL'];
+  const values: unknown[] = [];
+  if (params.search) {
+    where.push("(name LIKE ? ESCAPE '\\' OR contact_person LIKE ? ESCAPE '\\' OR phone LIKE ? ESCAPE '\\')");
+    const like = likeParam(params.search);
+    values.push(like, like, like);
+  }
+  const clause = `WHERE ${where.join(' AND ')}`;
+
+  const { total } = db.prepare(`SELECT COUNT(*) as total FROM suppliers ${clause}`).get(...values) as {
+    total: number;
+  };
+  const data = db
+    .prepare(`SELECT * FROM suppliers ${clause} ORDER BY name ASC LIMIT ? OFFSET ?`)
+    .all(...values, params.limit, params.offset) as Supplier[];
+  return { data, total, limit: params.limit, offset: params.offset };
+}
+
+export function getSupplierById(id: string): Supplier | null {
+  return (getDb().prepare('SELECT * FROM suppliers WHERE id = ? AND deleted_at IS NULL').get(id) as Supplier) ?? null;
+}
+
+export function createSupplier(data: SupplierInput): Supplier {
+  const id = randomUUID();
+  getDb()
+    .prepare(
+      `INSERT INTO suppliers (id, name, phone, email, address, contact_person, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
+    )
+    .run(id, data.name, data.phone, data.email, data.address, data.contact_person);
+  return getSupplierById(id)!;
+}
+
+export function updateSupplier(id: string, data: SupplierInput): Supplier {
+  if (!getSupplierById(id)) throw notFound('Supplier tidak ditemukan');
+  getDb()
+    .prepare(
+      "UPDATE suppliers SET name=?, phone=?, email=?, address=?, contact_person=?, updated_at=datetime('now') WHERE id=?",
+    )
+    .run(data.name, data.phone, data.email, data.address, data.contact_person, id);
+  return getSupplierById(id)!;
+}
+
+export function deleteSupplier(id: string): void {
+  if (!getSupplierById(id)) throw notFound('Supplier tidak ditemukan');
+  getDb().prepare("UPDATE suppliers SET deleted_at = datetime('now') WHERE id = ?").run(id);
+}
+
+// ============================================================================
+// TRANSAKSI
+// ============================================================================
+
+export interface CartItemInput {
+  product_id: string;
+  quantity: number;
+  discount: number;
+  discount_type: 'amount' | 'percent';
+}
+
+export interface CreateTransactionInput {
+  items: CartItemInput[];
+  customer_id?: string | null;
+  user_id: string;
+  discount: number;
+  discount_type: 'amount' | 'percent';
+  payment_method: string;
+  amount_paid: number;
+  notes: string;
+}
+
+/** Diskon nominal pada item bersifat per-unit; diskon persen berlaku atas nilai baris. */
+function lineTotal(price: number, quantity: number, discount: number, type: 'amount' | 'percent'): number {
+  const gross = price * quantity;
+  const cut = type === 'percent' ? Math.round((gross * discount) / 100) : discount * quantity;
+  return Math.max(0, gross - cut);
+}
+
+function nextInvoiceNo(db: Database.Database): string {
+  const day = todayLocal().replace(/-/g, '');
+  const prefix = `INV-${day}-`;
+  const row = db
+    .prepare('SELECT MAX(invoice_no) as last FROM transactions WHERE invoice_no LIKE ?')
+    .get(`${prefix}%`) as { last: string | null };
+  const lastSeq = row.last ? Number.parseInt(row.last.slice(prefix.length), 10) : 0;
+  const next = (Number.isFinite(lastSeq) ? lastSeq : 0) + 1;
+  return `${prefix}${String(next).padStart(4, '0')}`;
+}
+
+export function createTransaction(input: CreateTransactionInput): TransactionWithRelations {
+  const db = getDb();
+  const settings = getSettings();
+  // Tarif pajak selalu dari pengaturan server — client tidak boleh menentukannya.
+  const taxRate = settings.tax_rate;
+
+  return db.transaction(() => {
+    if (input.customer_id && !getCustomerById(input.customer_id)) {
+      throw badRequest('Pelanggan yang dipilih tidak ditemukan');
+    }
+
+    // Gabungkan baris dengan produk yang sama supaya pengecekan stok memakai
+    // total sesungguhnya, bukan per baris.
+    const merged = new Map<string, CartItemInput>();
+    for (const item of input.items) {
+      const existing = merged.get(item.product_id);
+      if (existing && existing.discount === item.discount && existing.discount_type === item.discount_type) {
+        existing.quantity += item.quantity;
+      } else if (existing) {
+        throw badRequest('Produk yang sama tidak boleh punya dua diskon berbeda dalam satu transaksi');
+      } else {
+        merged.set(item.product_id, { ...item });
+      }
+    }
+
+    let subtotal = 0;
+    let totalCost = 0;
+    const prepared: (Omit<TransactionItem, 'id' | 'transaction_id'> & { stock_before: number })[] = [];
+
+    for (const item of merged.values()) {
+      // Dibaca di dalam transaksi supaya stok tidak berubah antara cek dan tulis.
+      const product = getProductById(item.product_id);
+      if (!product) throw badRequest(`Produk dengan ID ${item.product_id} tidak ditemukan`);
+      if (product.stock < item.quantity) {
+        throw conflict(`Stok ${product.name} tidak cukup (tersedia ${product.stock}, diminta ${item.quantity})`);
+      }
+      if (item.discount_type === 'amount' && item.discount > product.price) {
+        throw badRequest(`Diskon untuk ${product.name} melebihi harga satuannya`);
+      }
+      if (item.discount_type === 'percent' && item.discount > 100) {
+        throw badRequest(`Diskon persen untuk ${product.name} tidak boleh lebih dari 100%`);
+      }
+
+      const lineSubtotal = lineTotal(product.price, item.quantity, item.discount, item.discount_type);
+      subtotal += lineSubtotal;
+      totalCost += product.cost_price * item.quantity;
+      prepared.push({
+        product_id: product.id,
+        product_name: product.name,
+        price: product.price,
+        cost_price: product.cost_price,
+        quantity: item.quantity,
+        discount: item.discount,
+        discount_type: item.discount_type,
+        subtotal: lineSubtotal,
+        stock_before: product.stock,
+      });
+    }
+
+    const discountAmount =
+      input.discount_type === 'percent' ? Math.round((subtotal * input.discount) / 100) : input.discount;
+    if (discountAmount > subtotal) {
+      throw badRequest('Diskon transaksi melebihi subtotal');
+    }
+
+    const afterDiscount = subtotal - discountAmount;
+    const taxAmount = Math.round((afterDiscount * taxRate) / 100);
+    const total = afterDiscount + taxAmount;
+
+    // Non-tunai selalu dibayar pas; hanya tunai yang punya kembalian.
+    const amountPaid = input.payment_method === 'cash' ? input.amount_paid : total;
+    if (amountPaid < total) {
+      throw badRequest(`Jumlah bayar kurang ${formatShortfall(total - amountPaid)} dari total tagihan`);
+    }
+    const change = amountPaid - total;
+
+    const id = randomUUID();
+    const invoiceNo = nextInvoiceNo(db);
+
+    db.prepare(
+      `INSERT INTO transactions (id, invoice_no, customer_id, user_id, subtotal, discount, discount_type,
+        discount_amount, tax_rate, tax_amount, total, total_cost, payment_method, amount_paid, change, notes, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed')`,
+    ).run(
+      id,
+      invoiceNo,
+      input.customer_id ?? null,
+      input.user_id,
+      subtotal,
+      input.discount,
+      input.discount_type,
+      discountAmount,
+      taxRate,
+      taxAmount,
+      total,
+      totalCost,
+      input.payment_method,
+      amountPaid,
+      change,
+      input.notes,
+    );
+
+    const insertItem = db.prepare(
+      `INSERT INTO transaction_items (id, transaction_id, product_id, product_name, price, cost_price,
+        quantity, discount, discount_type, subtotal) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    const updateStock = db.prepare("UPDATE products SET stock = ?, updated_at = datetime('now') WHERE id = ?");
+
+    for (const item of prepared) {
+      insertItem.run(
+        randomUUID(),
+        id,
+        item.product_id,
+        item.product_name,
+        item.price,
+        item.cost_price,
+        item.quantity,
+        item.discount,
+        item.discount_type,
+        item.subtotal,
+      );
+      const after = item.stock_before - item.quantity;
+      updateStock.run(after, item.product_id);
+      recordStockMovement(db, {
+        productId: item.product_id,
+        type: 'sale',
+        quantity: -item.quantity,
+        stockBefore: item.stock_before,
+        stockAfter: after,
+        notes: `Penjualan ${invoiceNo}`,
+        userId: input.user_id,
+      });
+    }
+
+    if (input.customer_id) {
+      const perAmount = settings.points_per_amount > 0 ? settings.points_per_amount : 10_000;
+      const points = Math.floor(total / perAmount);
+      db.prepare(
+        `UPDATE customers SET points = points + ?, total_spent = total_spent + ?, visit_count = visit_count + 1,
+         updated_at = datetime('now') WHERE id = ?`,
+      ).run(points, total, input.customer_id);
+    }
+
+    return getTransactionById(id)!;
+  })();
+}
+
+function formatShortfall(amount: number): string {
+  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(
+    amount,
+  );
+}
+
+export function listTransactions(params: {
+  status?: string;
+  userId?: string;
+  customerId?: string;
+  search?: string;
+  startDate?: string;
+  endDate?: string;
+  limit: number;
+  offset: number;
+}): Paginated<TransactionWithRelations> {
+  const db = getDb();
+  const where: string[] = ['1=1'];
+  const values: unknown[] = [];
+
+  if (params.status) {
+    where.push('t.status = ?');
+    values.push(params.status);
+  }
+  if (params.userId) {
+    where.push('t.user_id = ?');
+    values.push(params.userId);
+  }
+  if (params.customerId) {
+    where.push('t.customer_id = ?');
+    values.push(params.customerId);
+  }
+  if (params.search) {
+    where.push("(t.invoice_no LIKE ? ESCAPE '\\' OR c.name LIKE ? ESCAPE '\\' OR u.name LIKE ? ESCAPE '\\')");
+    const like = likeParam(params.search);
+    values.push(like, like, like);
+  }
+  if (params.startDate) {
+    where.push(`${localDate('t.created_at')} >= ?`);
+    values.push(params.startDate);
+  }
+  if (params.endDate) {
+    where.push(`${localDate('t.created_at')} <= ?`);
+    values.push(params.endDate);
+  }
+
+  const from = `FROM transactions t
+    LEFT JOIN customers c ON t.customer_id = c.id
+    JOIN users u ON t.user_id = u.id
+    WHERE ${where.join(' AND ')}`;
+
+  const { total } = db.prepare(`SELECT COUNT(*) as total ${from}`).get(...values) as { total: number };
+  const rows = db
+    .prepare(
+      `SELECT t.*, c.name as customer_name, u.name as user_name ${from}
+       ORDER BY t.created_at DESC, t.rowid DESC LIMIT ? OFFSET ?`,
+    )
+    .all(...values, params.limit, params.offset) as TransactionWithRelations[];
+
+  return { data: attachItems(db, rows), total, limit: params.limit, offset: params.offset };
+}
+
+/** Ambil semua item dalam satu query, bukan satu query per transaksi. */
+function attachItems(db: Database.Database, rows: TransactionWithRelations[]): TransactionWithRelations[] {
+  if (rows.length === 0) return rows;
+  const placeholders = rows.map(() => '?').join(',');
+  const items = db
+    .prepare(`SELECT * FROM transaction_items WHERE transaction_id IN (${placeholders}) ORDER BY rowid`)
+    .all(...rows.map((r) => r.id)) as TransactionItem[];
+
+  const byTransaction = new Map<string, TransactionItem[]>();
+  for (const item of items) {
+    const list = byTransaction.get(item.transaction_id);
+    if (list) list.push(item);
+    else byTransaction.set(item.transaction_id, [item]);
+  }
+  for (const row of rows) {
+    row.items = byTransaction.get(row.id) ?? [];
+  }
+  return rows;
+}
+
+export function getTransactionById(id: string): TransactionWithRelations | null {
+  const db = getDb();
+  const row = db
+    .prepare(
+      `SELECT t.*, c.name as customer_name, u.name as user_name, v.name as voided_by_name
+       FROM transactions t
+       LEFT JOIN customers c ON t.customer_id = c.id
+       JOIN users u ON t.user_id = u.id
+       LEFT JOIN users v ON t.voided_by = v.id
+       WHERE t.id = ?`,
+    )
+    .get(id) as TransactionWithRelations | undefined;
+  if (!row) return null;
+  return attachItems(db, [row])[0];
+}
+
+export function voidTransaction(id: string, userId: string, reason: string): TransactionWithRelations {
+  const db = getDb();
+  return db.transaction(() => {
+    const tx = getTransactionById(id);
+    if (!tx) throw notFound('Transaksi tidak ditemukan');
+    if (tx.status === 'voided') throw conflict('Transaksi ini sudah dibatalkan sebelumnya');
+
+    db.prepare(
+      "UPDATE transactions SET status = 'voided', voided_at = datetime('now'), voided_by = ?, void_reason = ? WHERE id = ?",
+    ).run(userId, reason, id);
+
+    for (const item of tx.items) {
+      const product = db.prepare('SELECT stock FROM products WHERE id = ?').get(item.product_id) as
+        | { stock: number }
+        | undefined;
+      // Produk yang sudah dihapus permanen tidak bisa dikembalikan stoknya,
+      // tapi pembatalan transaksinya tetap harus jalan.
+      if (!product) continue;
+      const after = product.stock + item.quantity;
+      db.prepare("UPDATE products SET stock = ?, updated_at = datetime('now') WHERE id = ?").run(after, item.product_id);
+      recordStockMovement(db, {
+        productId: item.product_id,
+        type: 'void',
+        quantity: item.quantity,
+        stockBefore: product.stock,
+        stockAfter: after,
+        notes: `Pembatalan ${tx.invoice_no}`,
+        userId,
+      });
+    }
+
+    if (tx.customer_id) {
+      const settings = getSettings();
+      const perAmount = settings.points_per_amount > 0 ? settings.points_per_amount : 10_000;
+      const points = Math.floor(tx.total / perAmount);
+      // MAX(0, ...) mencegah nilai negatif kalau poin sudah ditukar duluan.
+      db.prepare(
+        `UPDATE customers SET
+           points = MAX(0, points - ?),
+           total_spent = MAX(0, total_spent - ?),
+           visit_count = MAX(0, visit_count - 1),
+           updated_at = datetime('now')
+         WHERE id = ?`,
+      ).run(points, tx.total, tx.customer_id);
+    }
+
+    return getTransactionById(id)!;
+  })();
+}
+
+export function getCustomerTransactions(
+  customerId: string,
+  limit: number,
+  offset: number,
+): Paginated<TransactionWithRelations> {
+  return listTransactions({ customerId, limit, offset });
+}
+
+// ============================================================================
+// EXPENSES
+// ============================================================================
+
+export interface ExpenseInput {
+  description: string;
+  amount: number;
+  category: string;
+  date: string;
+  notes: string;
+}
+
+export function listExpenses(params: {
+  category?: string;
+  startDate?: string;
+  endDate?: string;
+  search?: string;
+  limit: number;
+  offset: number;
+}): Paginated<ExpenseWithRelations> & { sum: number } {
+  const db = getDb();
+  const where: string[] = ['1=1'];
+  const values: unknown[] = [];
+  if (params.category) {
+    where.push('e.category = ?');
+    values.push(params.category);
+  }
+  if (params.startDate) {
+    where.push('e.date >= ?');
+    values.push(params.startDate);
+  }
+  if (params.endDate) {
+    where.push('e.date <= ?');
+    values.push(params.endDate);
+  }
+  if (params.search) {
+    where.push("e.description LIKE ? ESCAPE '\\'");
+    values.push(likeParam(params.search));
+  }
+  const clause = `WHERE ${where.join(' AND ')}`;
+
+  // Total dihitung di server atas seluruh hasil filter, bukan hanya halaman ini.
+  const agg = db
+    .prepare(`SELECT COUNT(*) as total, COALESCE(SUM(e.amount), 0) as sum FROM expenses e ${clause}`)
+    .get(...values) as { total: number; sum: number };
+
+  const data = db
+    .prepare(
+      `SELECT e.*, u.name as user_name FROM expenses e JOIN users u ON e.created_by = u.id
+       ${clause} ORDER BY e.date DESC, e.created_at DESC LIMIT ? OFFSET ?`,
+    )
+    .all(...values, params.limit, params.offset) as ExpenseWithRelations[];
+
+  return { data, total: agg.total, sum: agg.sum, limit: params.limit, offset: params.offset };
+}
+
+export function getExpenseById(id: string): ExpenseWithRelations | null {
+  return (
+    (getDb()
+      .prepare('SELECT e.*, u.name as user_name FROM expenses e JOIN users u ON e.created_by = u.id WHERE e.id = ?')
+      .get(id) as ExpenseWithRelations) ?? null
+  );
+}
+
+export function createExpense(data: ExpenseInput, userId: string): ExpenseWithRelations {
+  const id = randomUUID();
+  getDb()
+    .prepare(
+      `INSERT INTO expenses (id, description, amount, category, date, notes, created_by, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+    )
+    .run(id, data.description, data.amount, data.category, data.date, data.notes, userId);
+  return getExpenseById(id)!;
+}
+
+export function updateExpense(id: string, data: ExpenseInput): ExpenseWithRelations {
+  if (!getExpenseById(id)) throw notFound('Pengeluaran tidak ditemukan');
+  getDb()
+    .prepare(
+      "UPDATE expenses SET description=?, amount=?, category=?, date=?, notes=?, updated_at=datetime('now') WHERE id=?",
+    )
+    .run(data.description, data.amount, data.category, data.date, data.notes, id);
+  return getExpenseById(id)!;
+}
+
+export function deleteExpense(id: string): void {
+  if (!getExpenseById(id)) throw notFound('Pengeluaran tidak ditemukan');
+  getDb().prepare('DELETE FROM expenses WHERE id = ?').run(id);
+}
+
+export function getExpenseCategories(): string[] {
+  const rows = getDb().prepare('SELECT DISTINCT category FROM expenses ORDER BY category').all() as {
+    category: string;
+  }[];
+  return rows.map((r) => r.category);
+}
+
+// ============================================================================
+// USERS
+// ============================================================================
+
+const PUBLIC_USER_COLUMNS = 'id, name, email, role, is_active, created_at, updated_at';
+
+export interface CreateUserInput {
+  name: string;
+  email: string;
+  password: string;
+  role: Role;
+}
+
+export interface UpdateUserInput {
+  name: string;
+  email: string;
+  password?: string;
+  role: Role;
+  is_active?: boolean;
+}
+
+export function listUsers(params: { search?: string; limit: number; offset: number }): Paginated<PublicUser> {
+  const db = getDb();
+  const where: string[] = ['deleted_at IS NULL'];
+  const values: unknown[] = [];
+  if (params.search) {
+    where.push("(name LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\')");
+    const like = likeParam(params.search);
+    values.push(like, like);
+  }
+  const clause = `WHERE ${where.join(' AND ')}`;
+
+  const { total } = db.prepare(`SELECT COUNT(*) as total FROM users ${clause}`).get(...values) as { total: number };
+  const data = db
+    .prepare(`SELECT ${PUBLIC_USER_COLUMNS} FROM users ${clause} ORDER BY name ASC LIMIT ? OFFSET ?`)
+    .all(...values, params.limit, params.offset) as PublicUser[];
+  return { data, total, limit: params.limit, offset: params.offset };
+}
+
+export function getUserById(id: string): PublicUser | null {
+  return (
+    (getDb()
+      .prepare(`SELECT ${PUBLIC_USER_COLUMNS} FROM users WHERE id = ? AND deleted_at IS NULL`)
+      .get(id) as PublicUser) ?? null
+  );
+}
+
+export function getUserByEmail(email: string): UserRow | null {
+  return (
+    (getDb()
+      .prepare('SELECT * FROM users WHERE lower(email) = lower(?) AND deleted_at IS NULL')
+      .get(email.trim()) as UserRow) ?? null
+  );
+}
+
+function countActiveAdmins(excludeId?: string): number {
+  const db = getDb();
+  const sql = excludeId
+    ? "SELECT COUNT(*) as count FROM users WHERE role = 'ADMIN' AND is_active = 1 AND deleted_at IS NULL AND id <> ?"
+    : "SELECT COUNT(*) as count FROM users WHERE role = 'ADMIN' AND is_active = 1 AND deleted_at IS NULL";
+  const row = (excludeId ? db.prepare(sql).get(excludeId) : db.prepare(sql).get()) as { count: number };
+  return row.count;
+}
+
+export function createUser(data: CreateUserInput): PublicUser {
+  const id = randomUUID();
+  getDb()
+    .prepare(
+      "INSERT INTO users (id, name, email, password, role, updated_at) VALUES (?, ?, ?, ?, ?, datetime('now'))",
+    )
+    .run(id, data.name, data.email.trim(), bcrypt.hashSync(data.password, BCRYPT_ROUNDS), data.role);
+  return getUserById(id)!;
+}
+
+export function updateUser(id: string, data: UpdateUserInput, actorId: string): PublicUser {
+  const db = getDb();
+  const existing = getUserById(id);
+  if (!existing) throw notFound('User tidak ditemukan');
+
+  const willBeActive = data.is_active ?? existing.is_active === 1;
+  const losesAdmin = existing.role === 'ADMIN' && (data.role !== 'ADMIN' || !willBeActive);
+  if (losesAdmin && countActiveAdmins(id) === 0) {
+    throw conflict('Tidak bisa mengubah admin terakhir — sistem harus punya minimal satu admin aktif');
+  }
+  if (id === actorId && data.role !== 'ADMIN') {
+    throw conflict('Anda tidak bisa menurunkan role akun Anda sendiri');
+  }
+  if (id === actorId && !willBeActive) {
+    throw conflict('Anda tidak bisa menonaktifkan akun Anda sendiri');
+  }
+
+  if (data.password) {
+    db.prepare(
+      "UPDATE users SET name=?, email=?, password=?, role=?, is_active=?, updated_at=datetime('now') WHERE id=?",
+    ).run(data.name, data.email.trim(), bcrypt.hashSync(data.password, BCRYPT_ROUNDS), data.role, willBeActive ? 1 : 0, id);
+  } else {
+    db.prepare("UPDATE users SET name=?, email=?, role=?, is_active=?, updated_at=datetime('now') WHERE id=?").run(
+      data.name,
+      data.email.trim(),
+      data.role,
+      willBeActive ? 1 : 0,
+      id,
+    );
+  }
+  return getUserById(id)!;
+}
+
+export function deleteUser(id: string, actorId: string): void {
+  const existing = getUserById(id);
+  if (!existing) throw notFound('User tidak ditemukan');
+  if (id === actorId) throw conflict('Anda tidak bisa menghapus akun Anda sendiri');
+  if (existing.role === 'ADMIN' && countActiveAdmins(id) === 0) {
+    throw conflict('Tidak bisa menghapus admin terakhir — sistem harus punya minimal satu admin aktif');
+  }
+  // Soft delete: transaksi dan riwayat stok masih menunjuk ke user ini.
+  getDb().prepare("UPDATE users SET deleted_at = datetime('now'), is_active = 0 WHERE id = ?").run(id);
+}
+
+export function changePassword(id: string, currentPassword: string, newPassword: string): void {
+  const db = getDb();
+  const user = db.prepare('SELECT * FROM users WHERE id = ? AND deleted_at IS NULL').get(id) as UserRow | undefined;
+  if (!user) throw notFound('User tidak ditemukan');
+  if (!bcrypt.compareSync(currentPassword, user.password)) {
+    throw badRequest('Password saat ini salah', { current_password: 'Password saat ini salah' });
+  }
+  db.prepare("UPDATE users SET password = ?, updated_at = datetime('now') WHERE id = ?").run(
+    bcrypt.hashSync(newPassword, BCRYPT_ROUNDS),
+    id,
+  );
+}
+
+// ============================================================================
+// DASHBOARD
+// ============================================================================
+
+export function getDashboardStats(userId: string, role: Role): DashboardStats {
+  const db = getDb();
+  const canSeeProfit = role === 'ADMIN';
+  // Kasir hanya melihat performa shift-nya sendiri, bukan omzet seluruh toko.
+  const scopedToSelf = role !== 'ADMIN';
+  const today = todayLocal();
+  const day = localDate('t.created_at');
+
+  const scope = scopedToSelf ? 'AND t.user_id = ?' : '';
+  const scopeParams = scopedToSelf ? [userId] : [];
+
+  const todayStats = db
+    .prepare(
+      `SELECT COALESCE(SUM(t.total), 0) as sales, COUNT(*) as count,
+              COALESCE(SUM(t.total - t.tax_amount - t.total_cost), 0) as profit,
+              COUNT(DISTINCT t.customer_id) as customers
+       FROM transactions t WHERE ${day} = ? AND t.status = 'completed' ${scope}`,
+    )
+    .get(today, ...scopeParams) as { sales: number; count: number; profit: number; customers: number };
+
+  const { count: totalProducts } = db
+    .prepare('SELECT COUNT(*) as count FROM products WHERE deleted_at IS NULL')
+    .get() as { count: number };
+  const { count: lowStockCount } = db
+    .prepare('SELECT COUNT(*) as count FROM products WHERE deleted_at IS NULL AND stock <= min_stock')
+    .get() as { count: number };
+
+  const recent = db
+    .prepare(
+      `SELECT t.*, c.name as customer_name, u.name as user_name
+       FROM transactions t
+       LEFT JOIN customers c ON t.customer_id = c.id
+       JOIN users u ON t.user_id = u.id
+       WHERE t.status = 'completed' ${scope}
+       ORDER BY t.created_at DESC, t.rowid DESC LIMIT 5`,
+    )
+    .all(...scopeParams) as TransactionWithRelations[];
+
+  const topProducts = db
+    .prepare(
+      `SELECT ti.product_id, ti.product_name as name, SUM(ti.quantity) as quantity,
+              SUM(ti.subtotal) as revenue, SUM(ti.subtotal - ti.cost_price * ti.quantity) as profit
+       FROM transaction_items ti JOIN transactions t ON ti.transaction_id = t.id
+       WHERE ${day} = ? AND t.status = 'completed' ${scope}
+       GROUP BY ti.product_id ORDER BY quantity DESC LIMIT 5`,
+    )
+    .all(today, ...scopeParams) as TopProduct[];
+
+  // Satu query untuk 7 hari sekaligus, lalu isi hari kosong di sisi JS.
+  const rawChart = db
+    .prepare(
+      `SELECT ${day} as date, COUNT(*) as transactions, COALESCE(SUM(t.total), 0) as sales,
+              COALESCE(SUM(t.total - t.tax_amount - t.total_cost), 0) as profit
+       FROM transactions t
+       WHERE t.status = 'completed' AND ${day} >= date(?, '-6 days') AND ${day} <= ? ${scope}
+       GROUP BY ${day}`,
+    )
+    .all(today, today, ...scopeParams) as DailySales[];
+
+  const chartByDate = new Map(rawChart.map((r) => [r.date, r]));
+  const salesChart: DailySales[] = [];
   for (let i = 6; i >= 0; i--) {
-    const d2 = new Date();
-    d2.setDate(d2.getDate() - i);
-    const dateStr = d2.toISOString().split('T')[0];
-    const dayStats = d.prepare(`
-      SELECT COALESCE(SUM(total), 0) as sales FROM transactions
-      WHERE date(created_at) = date(?) AND status = 'completed'
-    `).get(dateStr) as any;
-    salesChart.push({ date: dateStr, sales: dayStats.sales });
+    const date = new Date(`${today}T00:00:00Z`);
+    date.setUTCDate(date.getUTCDate() - i);
+    const key = date.toISOString().slice(0, 10);
+    salesChart.push(chartByDate.get(key) ?? { date: key, transactions: 0, sales: 0, profit: 0 });
   }
 
-  const categoryChart = d.prepare(`
-    SELECT p.category, SUM(ti.subtotal) as total FROM transaction_items ti
-    JOIN transactions t ON ti.transaction_id = t.id
-    JOIN products p ON ti.product_id = p.id
-    WHERE date(t.created_at) = date(?) AND t.status = 'completed'
-    GROUP BY p.category ORDER BY total DESC
-  `).all(today) as any[];
+  const categoryChart = db
+    .prepare(
+      `SELECT p.category, SUM(ti.subtotal) as total
+       FROM transaction_items ti
+       JOIN transactions t ON ti.transaction_id = t.id
+       JOIN products p ON ti.product_id = p.id
+       WHERE ${day} = ? AND t.status = 'completed' ${scope}
+       GROUP BY p.category ORDER BY total DESC`,
+    )
+    .all(today, ...scopeParams) as CategorySales[];
 
   return {
+    canSeeProfit,
+    scopedToSelf,
     todaySales: todayStats.sales,
-    todayProfit: todayProfit.profit,
+    todayProfit: canSeeProfit ? todayStats.profit : 0,
     todayTransactions: todayStats.count,
-    todayCustomers: todayCustomers.count,
-    totalProducts: totalProducts.count,
-    lowStockCount: lowStock.count,
-    recentTransactions,
-    topProducts,
-    salesChart,
+    todayCustomers: todayStats.customers,
+    totalProducts,
+    lowStockCount,
+    recentTransactions: attachItems(db, recent),
+    topProducts: canSeeProfit ? topProducts : topProducts.map((p) => ({ ...p, profit: 0 })),
+    salesChart: canSeeProfit ? salesChart : salesChart.map((d) => ({ ...d, profit: 0 })),
     categoryChart,
   };
 }
 
-// ===== REPORTS =====
-export function getSalesReport(startDate: string, endDate: string) {
-  const d = getDb();
-  const summary = d.prepare(`
-    SELECT COUNT(*) as totalTransactions, COALESCE(SUM(total), 0) as totalSales,
-    COALESCE(SUM(change), 0) as totalChange FROM transactions
-    WHERE date(created_at) BETWEEN ? AND ? AND status = 'completed'
-  `).get(startDate, endDate) as any;
+// ============================================================================
+// LAPORAN
+// ============================================================================
 
-  const profit = d.prepare(`
-    SELECT COALESCE(SUM(ti.subtotal - (ti.cost_price * ti.quantity)), 0) as totalProfit
-    FROM transaction_items ti JOIN transactions t ON ti.transaction_id = t.id
-    WHERE date(t.created_at) BETWEEN ? AND ? AND t.status = 'completed'
-  `).get(startDate, endDate) as any;
+export function getSalesReport(startDate: string, endDate: string): SalesReport {
+  const db = getDb();
+  const day = localDate('t.created_at');
+  const range = [startDate, endDate];
 
-  const dailySales = d.prepare(`
-    SELECT date(created_at) as date, COUNT(*) as transactions, SUM(total) as sales
-    FROM transactions WHERE date(created_at) BETWEEN ? AND ? AND status = 'completed'
-    GROUP BY date(created_at) ORDER BY date
-  `).all(startDate, endDate) as any[];
+  const summary = db
+    .prepare(
+      `SELECT COUNT(*) as totalTransactions,
+              COALESCE(SUM(t.total), 0) as totalSales,
+              COALESCE(SUM(t.total - t.tax_amount - t.total_cost), 0) as totalProfit
+       FROM transactions t WHERE ${day} BETWEEN ? AND ? AND t.status = 'completed'`,
+    )
+    .get(...range) as { totalTransactions: number; totalSales: number; totalProfit: number };
 
-  const topProducts = d.prepare(`
-    SELECT ti.product_name as name, SUM(ti.quantity) as quantity, SUM(ti.subtotal) as revenue
-    FROM transaction_items ti JOIN transactions t ON ti.transaction_id = t.id
-    WHERE date(t.created_at) BETWEEN ? AND ? AND t.status = 'completed'
-    GROUP BY ti.product_id ORDER BY revenue DESC LIMIT 10
-  `).all(startDate, endDate) as any[];
+  const { voidedCount } = db
+    .prepare(
+      `SELECT COUNT(*) as voidedCount FROM transactions t WHERE ${day} BETWEEN ? AND ? AND t.status = 'voided'`,
+    )
+    .get(...range) as { voidedCount: number };
 
-  const byPayment = d.prepare(`
-    SELECT payment_method, COUNT(*) as count, SUM(total) as total
-    FROM transactions WHERE date(created_at) BETWEEN ? AND ? AND status = 'completed'
-    GROUP BY payment_method
-  `).all(startDate, endDate) as any[];
+  const { totalItemsSold } = db
+    .prepare(
+      `SELECT COALESCE(SUM(ti.quantity), 0) as totalItemsSold FROM transaction_items ti
+       JOIN transactions t ON ti.transaction_id = t.id
+       WHERE ${day} BETWEEN ? AND ? AND t.status = 'completed'`,
+    )
+    .get(...range) as { totalItemsSold: number };
 
-  const totalExpenses = d.prepare(`
-    SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE date BETWEEN ? AND ?
-  `).get(startDate, endDate) as any;
+  const { totalExpenses } = db
+    .prepare('SELECT COALESCE(SUM(amount), 0) as totalExpenses FROM expenses WHERE date BETWEEN ? AND ?')
+    .get(...range) as { totalExpenses: number };
+
+  const dailySales = db
+    .prepare(
+      `SELECT ${day} as date, COUNT(*) as transactions, COALESCE(SUM(t.total), 0) as sales,
+              COALESCE(SUM(t.total - t.tax_amount - t.total_cost), 0) as profit
+       FROM transactions t WHERE ${day} BETWEEN ? AND ? AND t.status = 'completed'
+       GROUP BY ${day} ORDER BY date`,
+    )
+    .all(...range) as DailySales[];
+
+  const topProducts = db
+    .prepare(
+      `SELECT ti.product_id, ti.product_name as name, SUM(ti.quantity) as quantity,
+              SUM(ti.subtotal) as revenue, SUM(ti.subtotal - ti.cost_price * ti.quantity) as profit
+       FROM transaction_items ti JOIN transactions t ON ti.transaction_id = t.id
+       WHERE ${day} BETWEEN ? AND ? AND t.status = 'completed'
+       GROUP BY ti.product_id ORDER BY revenue DESC LIMIT 10`,
+    )
+    .all(...range) as TopProduct[];
+
+  const byPayment = db
+    .prepare(
+      `SELECT t.payment_method, COUNT(*) as count, COALESCE(SUM(t.total), 0) as total
+       FROM transactions t WHERE ${day} BETWEEN ? AND ? AND t.status = 'completed'
+       GROUP BY t.payment_method ORDER BY total DESC`,
+    )
+    .all(...range) as PaymentBreakdown[];
+
+  const byCategory = db
+    .prepare(
+      `SELECT p.category, COALESCE(SUM(ti.subtotal), 0) as total
+       FROM transaction_items ti
+       JOIN transactions t ON ti.transaction_id = t.id
+       JOIN products p ON ti.product_id = p.id
+       WHERE ${day} BETWEEN ? AND ? AND t.status = 'completed'
+       GROUP BY p.category ORDER BY total DESC`,
+    )
+    .all(...range) as CategorySales[];
+
+  const expensesByCategory = db
+    .prepare(
+      `SELECT category, COALESCE(SUM(amount), 0) as total FROM expenses
+       WHERE date BETWEEN ? AND ? GROUP BY category ORDER BY total DESC`,
+    )
+    .all(...range) as { category: string; total: number }[];
 
   return {
-    summary: { ...summary, totalProfit: profit.totalProfit, totalExpenses: totalExpenses.total, netProfit: profit.totalProfit - totalExpenses.total },
+    summary: {
+      ...summary,
+      totalExpenses,
+      netProfit: summary.totalProfit - totalExpenses,
+      averageTransaction:
+        summary.totalTransactions > 0 ? Math.round(summary.totalSales / summary.totalTransactions) : 0,
+      totalItemsSold,
+      voidedCount,
+    },
     dailySales,
     topProducts,
     byPayment,
+    byCategory,
+    expensesByCategory,
   };
 }
 
-export function getCategories() {
-  return getDb().prepare('SELECT DISTINCT category FROM products ORDER BY category').all() as { category: string }[];
-}
+export type { Product, Customer, Supplier, Expense, Transaction, Settings };

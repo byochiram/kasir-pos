@@ -1,18 +1,20 @@
-import { NextRequest } from 'next/server';
-import { getAllSuppliers, createSupplier } from '@/lib/db';
+import { z } from 'zod';
+import { requireAdmin } from '@/lib/auth';
+import { createSupplier, listSuppliers } from '@/lib/db';
+import { json, readBody, readQuery, route } from '@/lib/http';
+import { paginationSchema, supplierSchema } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
-export async function GET(request: NextRequest) {
-  const sp = request.nextUrl.searchParams;
-  return Response.json(getAllSuppliers(sp.get('search') || undefined));
-}
+const querySchema = paginationSchema.extend({ search: z.string().max(100).optional() });
 
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    return Response.json(createSupplier(body), { status: 201 });
-  } catch (error: any) {
-    return Response.json({ error: error.message }, { status: 400 });
-  }
-}
+export const GET = route(async (request) => {
+  await requireAdmin();
+  return json(listSuppliers(readQuery(request, querySchema)));
+});
+
+export const POST = route(async (request) => {
+  await requireAdmin();
+  return json(createSupplier(await readBody(request, supplierSchema)), 201);
+});

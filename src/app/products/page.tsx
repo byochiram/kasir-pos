@@ -1,448 +1,617 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
+import { api, errorFields, errorMessage, qs } from '@/lib/api-client';
+import { formatDateTime, formatNumber, formatRupiah } from '@/lib/format';
+import { useFetch } from '@/hooks/useFetch';
+import { usePagedResource } from '@/hooks/usePagedResource';
+import { useApp } from '@/components/AppProvider';
+import { useToast } from '@/components/ui/Toast';
+import PageHeader from '@/components/PageHeader';
+import Button from '@/components/ui/Button';
+import Modal from '@/components/ui/Modal';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import Pagination from '@/components/ui/Pagination';
+import { TextAreaField, TextField } from '@/components/ui/Field';
+import { EmptyState, ErrorState, TableSkeleton } from '@/components/ui/States';
+import type { Paginated, Product, StockHistoryWithRelations } from '@/lib/types';
 
-function formatRupiah(amount: number): string {
-  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
-}
+const PAGE_SIZE = 20;
 
-interface Product {
-  id: string;
-  name: string;
-  category: string;
-  price: number;
-  cost_price: number;
-  stock: number;
-  min_stock: number;
-  barcode: string;
-}
+const EMPTY_FORM = {
+  name: '',
+  price: '',
+  cost_price: '',
+  stock: '',
+  min_stock: '5',
+  category: '',
+  barcode: '',
+  unit: 'pcs',
+};
+
+type FormState = typeof EMPTY_FORM;
+type StockMode = 'in' | 'out' | 'adjust';
+
+const STOCK_MODES: Record<StockMode, { title: string; label: string; endpoint: string; verb: string }> = {
+  in: { title: 'Stok Masuk', label: 'Jumlah masuk', endpoint: '/api/stock/in', verb: 'ditambahkan' },
+  out: { title: 'Stok Keluar', label: 'Jumlah keluar', endpoint: '/api/stock/out', verb: 'dikurangi' },
+  adjust: { title: 'Stok Opname', label: 'Stok hasil hitung fisik', endpoint: '/api/stock/adjust', verb: 'disesuaikan' },
+};
+
+const MOVEMENT_LABELS: Record<string, { label: string; className: string }> = {
+  in: { label: 'Masuk', className: 'bg-emerald-50 text-emerald-700' },
+  out: { label: 'Keluar', className: 'bg-orange-50 text-orange-700' },
+  sale: { label: 'Penjualan', className: 'bg-sky-50 text-sky-700' },
+  adjustment: { label: 'Penyesuaian', className: 'bg-violet-50 text-violet-700' },
+  void: { label: 'Pembatalan', className: 'bg-amber-50 text-amber-700' },
+};
 
 export default function ProductsPage() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [filterCategory, setFilterCategory] = useState('');
-  const [showModal, setShowModal] = useState(false);
-  const [showStockModal, setShowStockModal] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    price: '',
-    cost_price: '',
-    stock: '',
-    min_stock: '',
-    category: '',
-    barcode: ''
-  });
-  const [stockData, setStockData] = useState({ quantity: '', notes: '' });
-  const [submitting, setSubmitting] = useState(false);
+  const { isAdmin, tzOffset } = useApp();
+  const toast = useToast();
 
-  useEffect(() => {
-    fetchProducts();
-    fetchCategories();
-  }, []);
+  const [search, setSearchValue] = useState('');
+  const [category, setCategoryValue] = useState('');
+  const [lowStockOnly, setLowStockOnlyValue] = useState(false);
+  const [offset, setOffset] = useState(0);
 
-  async function fetchProducts() {
-    try {
-      setLoading(true);
-      const res = await fetch('/api/products');
-      const data = await res.json();
-      setProducts(data);
-    } catch (error) {
-      console.error('Failed to fetch products:', error);
-    } finally {
-      setLoading(false);
-    }
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<Product | null>(null);
+  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+
+  const [stockTarget, setStockTarget] = useState<{ product: Product; mode: StockMode } | null>(null);
+  const [stockQty, setStockQty] = useState('');
+  const [stockNotes, setStockNotes] = useState('');
+  const [stockSaving, setStockSaving] = useState(false);
+
+  const [deleting, setDeleting] = useState<Product | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const [historyOf, setHistoryOf] = useState<Product | null>(null);
+  const [history, setHistory] = useState<StockHistoryWithRelations[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const url = useMemo(
+    () => `/api/products${qs({ search, category, lowStock: lowStockOnly || undefined, limit: PAGE_SIZE, offset })}`,
+    [search, category, lowStockOnly, offset],
+  );
+  const { items: products, total, loading, error, reload } = usePagedResource<Product>(url, { debounceMs: 300 });
+  const { data: categoryData, reload: reloadCategories } = useFetch<string[]>('/api/products/categories');
+  const categories = useMemo(() => categoryData ?? [], [categoryData]);
+
+  // Filter apa pun mengembalikan tampilan ke halaman pertama, supaya tidak
+  // berhenti di halaman yang sudah tidak punya isi.
+  function setSearch(value: string) {
+    setSearchValue(value);
+    setOffset(0);
+  }
+  function setCategory(value: string) {
+    setCategoryValue(value);
+    setOffset(0);
+  }
+  function setLowStockOnly(value: boolean) {
+    setLowStockOnlyValue(value);
+    setOffset(0);
   }
 
-  async function fetchCategories() {
-    try {
-      const res = await fetch('/api/products?categories=true');
-      const data = await res.json();
-      setCategories(data.map((c: any) => c.category));
-    } catch (error) {
-      console.error('Failed to fetch categories:', error);
-    }
+  function openCreate() {
+    setEditing(null);
+    setForm({ ...EMPTY_FORM, category: categories[0] ?? 'Umum' });
+    setFieldErrors({});
+    setFormOpen(true);
   }
 
-  const filteredProducts = products.filter((p) => {
-    const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.barcode.includes(search);
-    const matchCategory = !filterCategory || p.category === filterCategory;
-    return matchSearch && matchCategory;
-  });
-
-  function openCreateModal() {
-    setEditingProduct(null);
-    setFormData({ name: '', price: '', cost_price: '', stock: '', min_stock: '', category: '', barcode: '' });
-    setShowModal(true);
-  }
-
-  function openEditModal(product: Product) {
-    setEditingProduct(product);
-    setFormData({
+  function openEdit(product: Product) {
+    setEditing(product);
+    setForm({
       name: product.name,
       price: String(product.price),
       cost_price: String(product.cost_price),
       stock: String(product.stock),
       min_stock: String(product.min_stock),
       category: product.category,
-      barcode: product.barcode
+      barcode: product.barcode ?? '',
+      unit: product.unit ?? 'pcs',
     });
-    setShowModal(true);
+    setFieldErrors({});
+    setFormOpen(true);
   }
 
-  function openStockModal(product: Product) {
-    setSelectedProduct(product);
-    setStockData({ quantity: '', notes: '' });
-    setShowStockModal(true);
-  }
-
-  function openDeleteModal(product: Product) {
-    setSelectedProduct(product);
-    setShowDeleteModal(true);
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setSubmitting(true);
+  async function submitForm(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setFieldErrors({});
     try {
-      const url = editingProduct ? `/api/products/${editingProduct.id}` : '/api/products';
-      const method = editingProduct ? 'PUT' : 'POST';
-      await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: formData.name,
-          price: Number(formData.price),
-          cost_price: Number(formData.cost_price),
-          stock: Number(formData.stock),
-          min_stock: Number(formData.min_stock),
-          category: formData.category,
-          barcode: formData.barcode
-        })
-      });
-      setShowModal(false);
-      fetchProducts();
-    } catch (error) {
-      console.error('Failed to save product:', error);
+      const payload = {
+        name: form.name,
+        price: form.price,
+        cost_price: form.cost_price || 0,
+        stock: form.stock || 0,
+        min_stock: form.min_stock || 0,
+        category: form.category.trim() || 'Umum',
+        barcode: form.barcode,
+        unit: form.unit.trim() || 'pcs',
+      };
+      if (editing) {
+        await api.put(`/api/products/${editing.id}`, payload);
+        toast.success(`Produk ${form.name} diperbarui`);
+      } else {
+        await api.post('/api/products', payload);
+        toast.success(`Produk ${form.name} ditambahkan`);
+      }
+      setFormOpen(false);
+      setEditing(null);
+      reload();
+      // Kategori baru harus langsung muncul di dropdown filter.
+      reloadCategories();
+    } catch (err) {
+      setFieldErrors(errorFields(err));
+      toast.error(errorMessage(err));
     } finally {
-      setSubmitting(false);
+      setSaving(false);
     }
   }
 
-  async function handleStockIn(e: React.FormEvent) {
-    e.preventDefault();
-    if (!selectedProduct) return;
-    setSubmitting(true);
+  async function submitStock(event: React.FormEvent) {
+    event.preventDefault();
+    if (!stockTarget) return;
+    const { product, mode } = stockTarget;
+    setStockSaving(true);
     try {
-      await fetch('/api/products/stock-in', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          product_id: selectedProduct.id,
-          quantity: Number(stockData.quantity),
-          notes: stockData.notes
-        })
-      });
-      setShowStockModal(false);
-      fetchProducts();
-    } catch (error) {
-      console.error('Failed to stock in:', error);
+      const body =
+        mode === 'adjust'
+          ? { product_id: product.id, new_stock: stockQty, notes: stockNotes }
+          : { product_id: product.id, quantity: stockQty, notes: stockNotes };
+      await api.post(STOCK_MODES[mode].endpoint, body);
+      toast.success(`Stok ${product.name} berhasil ${STOCK_MODES[mode].verb}`);
+      setStockTarget(null);
+      setStockQty('');
+      setStockNotes('');
+      reload();
+    } catch (err) {
+      toast.error(errorMessage(err));
     } finally {
-      setSubmitting(false);
+      setStockSaving(false);
     }
   }
 
-  async function handleDelete() {
-    if (!selectedProduct) return;
-    setSubmitting(true);
+  async function confirmDelete() {
+    if (!deleting) return;
+    setDeleteLoading(true);
     try {
-      await fetch(`/api/products/${selectedProduct.id}`, { method: 'DELETE' });
-      setShowDeleteModal(false);
-      fetchProducts();
-    } catch (error) {
-      console.error('Failed to delete product:', error);
+      await api.delete(`/api/products/${deleting.id}`);
+      toast.success(`Produk ${deleting.name} dihapus`);
+      setDeleting(null);
+      reload();
+      reloadCategories();
+    } catch (err) {
+      toast.error(errorMessage(err));
     } finally {
-      setSubmitting(false);
+      setDeleteLoading(false);
+    }
+  }
+
+  async function openHistory(product: Product) {
+    setHistoryOf(product);
+    setHistoryLoading(true);
+    try {
+      const result = await api.get<Paginated<StockHistoryWithRelations>>(
+        `/api/stock/history${qs({ productId: product.id, limit: 50 })}`,
+      );
+      setHistory(result.data);
+    } catch (err) {
+      toast.error(errorMessage(err));
+      setHistory([]);
+    } finally {
+      setHistoryLoading(false);
     }
   }
 
   return (
-    <div className="min-h-screen">
-      <div className="flex justify-between items-center mb-8 animate-slide-up">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Kelola Produk</h1>
-          <p className="text-slate-500 mt-1">Kelola daftar produk dan inventaris</p>
-        </div>
-        <button
-          onClick={openCreateModal}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md flex items-center gap-2"
-        >
-          <span className="text-lg">+</span> Tambah Produk
-        </button>
-      </div>
+    <>
+      <PageHeader
+        title="Produk"
+        description={`${formatNumber(total)} produk terdaftar`}
+        actions={
+          isAdmin && (
+            <Button onClick={openCreate}>
+              <span aria-hidden>+</span> Tambah Produk
+            </Button>
+          )
+        }
+      />
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 p-4 mb-6 animate-slide-up" style={{ animationDelay: '50ms' }}>
-        <div className="flex gap-3">
-          <div className="flex-1 relative">
-            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
-            <input
-              type="text"
-              placeholder="Cari produk atau barcode..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-sm transition-all"
-            />
-          </div>
+      <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm">
+        <div className="flex flex-col gap-2 border-b border-slate-200/70 p-3 sm:flex-row sm:items-center">
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Cari nama atau barcode..."
+            aria-label="Cari produk"
+            className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+          />
           <select
-            value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value)}
-            className="px-4 py-2.5 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+            value={category}
+            onChange={(event) => setCategory(event.target.value)}
+            aria-label="Filter kategori"
+            className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500"
           >
             <option value="">Semua Kategori</option>
-            {categories.map((cat) => (
-              <option key={cat} value={cat}>{cat}</option>
+            {categories.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
             ))}
           </select>
+          <label className="flex shrink-0 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              checked={lowStockOnly}
+              onChange={(event) => setLowStockOnly(event.target.checked)}
+              className="h-4 w-4 accent-emerald-600"
+            />
+            Stok menipis
+          </label>
         </div>
+
+        {loading ? (
+          <TableSkeleton columns={6} />
+        ) : error ? (
+          <div className="p-4">
+            <ErrorState message={error} onRetry={reload} />
+          </div>
+        ) : products.length === 0 ? (
+          <EmptyState
+            icon="📦"
+            title="Belum ada produk"
+            description={search || category || lowStockOnly ? 'Tidak ada produk yang cocok dengan filter.' : 'Tambahkan produk pertama Anda.'}
+            action={isAdmin && !search && !category && !lowStockOnly ? <Button onClick={openCreate}>Tambah Produk</Button> : undefined}
+          />
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[820px] text-sm">
+                <thead className="bg-slate-50/70 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3 font-semibold">Produk</th>
+                    <th className="px-4 py-3 font-semibold">Kategori</th>
+                    <th className="px-4 py-3 text-right font-semibold">Harga Jual</th>
+                    {isAdmin && <th className="px-4 py-3 text-right font-semibold">Modal</th>}
+                    <th className="px-4 py-3 text-right font-semibold">Stok</th>
+                    <th className="px-4 py-3 text-right font-semibold">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {products.map((product) => {
+                    const low = product.stock <= product.min_stock;
+                    return (
+                      <tr key={product.id} className="transition-colors hover:bg-slate-50/60">
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-slate-800">{product.name}</p>
+                          {product.barcode && (
+                            <p className="mt-0.5 font-mono text-xs text-slate-400">{product.barcode}</p>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                            {product.category}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold text-slate-800">
+                          {formatRupiah(product.price)}
+                        </td>
+                        {isAdmin && (
+                          <td className="px-4 py-3 text-right text-slate-500">{formatRupiah(product.cost_price)}</td>
+                        )}
+                        <td className="px-4 py-3 text-right">
+                          <span
+                            className={`inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${
+                              product.stock <= 0
+                                ? 'bg-red-50 text-red-600'
+                                : low
+                                  ? 'bg-amber-50 text-amber-700'
+                                  : 'bg-emerald-50 text-emerald-700'
+                            }`}
+                            title={`Minimum ${product.min_stock} ${product.unit}`}
+                          >
+                            {formatNumber(product.stock)} {product.unit}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex justify-end gap-1">
+                            {isAdmin ? (
+                              <>
+                                <IconAction label="Stok masuk" onClick={() => { setStockTarget({ product, mode: 'in' }); setStockQty(''); setStockNotes(''); }}>
+                                  ↓
+                                </IconAction>
+                                <IconAction label="Stok keluar" onClick={() => { setStockTarget({ product, mode: 'out' }); setStockQty(''); setStockNotes(''); }}>
+                                  ↑
+                                </IconAction>
+                                <IconAction label="Stok opname" onClick={() => { setStockTarget({ product, mode: 'adjust' }); setStockQty(String(product.stock)); setStockNotes(''); }}>
+                                  ⚖
+                                </IconAction>
+                                <IconAction label="Riwayat stok" onClick={() => openHistory(product)}>
+                                  🕘
+                                </IconAction>
+                                <IconAction label="Edit produk" onClick={() => openEdit(product)}>
+                                  ✎
+                                </IconAction>
+                                <IconAction label="Hapus produk" danger onClick={() => setDeleting(product)}>
+                                  🗑
+                                </IconAction>
+                              </>
+                            ) : (
+                              <span className="text-xs text-slate-400">Hanya admin</span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <Pagination total={total} limit={PAGE_SIZE} offset={offset} onChange={setOffset} unit="produk" />
+          </>
+        )}
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="flex flex-col items-center gap-4">
-            <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-            <p className="text-slate-500 text-sm">Memuat data...</p>
+      <Modal
+        open={formOpen}
+        title={editing ? 'Edit Produk' : 'Tambah Produk'}
+        description={editing ? 'Perubahan stok di sini otomatis tercatat sebagai penyesuaian.' : undefined}
+        size="lg"
+        disableBackdropClose
+        onClose={() => setFormOpen(false)}
+      >
+        <form onSubmit={submitForm} className="space-y-4">
+          <TextField
+            label="Nama Produk"
+            required
+            maxLength={200}
+            value={form.name}
+            error={fieldErrors.name}
+            onChange={(event) => setForm({ ...form, name: event.target.value })}
+          />
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <TextField
+              label="Harga Jual"
+              type="number"
+              min={0}
+              required
+              value={form.price}
+              error={fieldErrors.price}
+              onChange={(event) => setForm({ ...form, price: event.target.value })}
+            />
+            <TextField
+              label="Harga Modal"
+              type="number"
+              min={0}
+              value={form.cost_price}
+              error={fieldErrors.cost_price}
+              hint="Dipakai menghitung laba"
+              onChange={(event) => setForm({ ...form, cost_price: event.target.value })}
+            />
           </div>
-        </div>
-      ) : (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden animate-slide-up" style={{ animationDelay: '100ms' }}>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <TextField
+              label="Stok"
+              type="number"
+              min={0}
+              value={form.stock}
+              error={fieldErrors.stock}
+              onChange={(event) => setForm({ ...form, stock: event.target.value })}
+            />
+            <TextField
+              label="Stok Minimum"
+              type="number"
+              min={0}
+              value={form.min_stock}
+              error={fieldErrors.min_stock}
+              hint="Batas peringatan"
+              onChange={(event) => setForm({ ...form, min_stock: event.target.value })}
+            />
+            <TextField
+              label="Satuan"
+              maxLength={20}
+              value={form.unit}
+              error={fieldErrors.unit}
+              placeholder="pcs"
+              onChange={(event) => setForm({ ...form, unit: event.target.value })}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <TextField
+                label="Kategori"
+                required
+                list="kategori-produk"
+                maxLength={50}
+                value={form.category}
+                error={fieldErrors.category}
+                hint="Pilih yang ada atau ketik kategori baru"
+                onChange={(event) => setForm({ ...form, category: event.target.value })}
+              />
+              <datalist id="kategori-produk">
+                {categories.map((item) => (
+                  <option key={item} value={item} />
+                ))}
+              </datalist>
+            </div>
+            <TextField
+              label="Barcode"
+              maxLength={50}
+              value={form.barcode}
+              error={fieldErrors.barcode}
+              hint="Opsional, harus unik"
+              onChange={(event) => setForm({ ...form, barcode: event.target.value })}
+            />
+          </div>
+
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+            <Button variant="secondary" onClick={() => setFormOpen(false)} disabled={saving}>
+              Batal
+            </Button>
+            <Button type="submit" loading={saving}>
+              {editing ? 'Simpan Perubahan' : 'Tambah Produk'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        open={stockTarget !== null}
+        title={stockTarget ? STOCK_MODES[stockTarget.mode].title : ''}
+        description={stockTarget ? `${stockTarget.product.name} — stok saat ini ${stockTarget.product.stock} ${stockTarget.product.unit}` : undefined}
+        size="sm"
+        disableBackdropClose
+        onClose={() => setStockTarget(null)}
+      >
+        {stockTarget && (
+          <form onSubmit={submitStock} className="space-y-4">
+            <TextField
+              label={STOCK_MODES[stockTarget.mode].label}
+              type="number"
+              min={stockTarget.mode === 'adjust' ? 0 : 1}
+              required
+              value={stockQty}
+              onChange={(event) => setStockQty(event.target.value)}
+              hint={
+                stockTarget.mode === 'adjust'
+                  ? 'Masukkan hasil hitung fisik, bukan selisihnya'
+                  : undefined
+              }
+            />
+            <TextAreaField
+              label="Catatan"
+              rows={2}
+              required={stockTarget.mode !== 'in'}
+              value={stockNotes}
+              onChange={(event) => setStockNotes(event.target.value)}
+              placeholder={
+                stockTarget.mode === 'in'
+                  ? 'Contoh: kiriman dari PT Sumber Rejeki'
+                  : stockTarget.mode === 'out'
+                    ? 'Contoh: barang rusak / kedaluwarsa'
+                    : 'Contoh: hasil stok opname bulanan'
+              }
+            />
+            <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+              <Button variant="secondary" onClick={() => setStockTarget(null)} disabled={stockSaving}>
+                Batal
+              </Button>
+              <Button type="submit" loading={stockSaving}>
+                Simpan
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      <Modal
+        open={historyOf !== null}
+        title="Riwayat Stok"
+        description={historyOf?.name}
+        size="lg"
+        onClose={() => setHistoryOf(null)}
+      >
+        {historyLoading ? (
+          <TableSkeleton rows={4} columns={4} />
+        ) : history.length === 0 ? (
+          <EmptyState icon="🕘" title="Belum ada pergerakan stok" />
+        ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-slate-50">
-                  <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Nama</th>
-                  <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Kategori</th>
-                  <th className="px-5 py-3.5 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Harga Jual</th>
-                  <th className="px-5 py-3.5 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Harga Beli</th>
-                  <th className="px-5 py-3.5 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Stok</th>
-                  <th className="px-5 py-3.5 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Aksi</th>
+            <table className="w-full min-w-[560px] text-sm">
+              <thead className="bg-slate-50/70 text-left text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-3 py-2 font-semibold">Waktu</th>
+                  <th className="px-3 py-2 font-semibold">Jenis</th>
+                  <th className="px-3 py-2 text-right font-semibold">Perubahan</th>
+                  <th className="px-3 py-2 text-right font-semibold">Sisa</th>
+                  <th className="px-3 py-2 font-semibold">Oleh</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredProducts.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-5 py-16 text-center">
-                      <div className="text-4xl mb-2">📦</div>
-                      <p className="text-slate-400">Tidak ada produk ditemukan</p>
-                    </td>
-                  </tr>
-                ) : (
-                  filteredProducts.map((product) => (
-                    <tr key={product.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-5 py-3.5">
-                        <div className="font-medium text-slate-800">{product.name}</div>
-                        {product.barcode && <div className="text-xs text-slate-400 font-mono mt-0.5">{product.barcode}</div>}
+                {history.map((row) => {
+                  const movement = MOVEMENT_LABELS[row.type] ?? { label: row.type, className: 'bg-slate-100 text-slate-600' };
+                  return (
+                    <tr key={row.id}>
+                      <td className="whitespace-nowrap px-3 py-2 text-slate-500">
+                        {formatDateTime(row.created_at, tzOffset)}
                       </td>
-                      <td className="px-5 py-3.5">
-                        <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full text-xs font-medium">{product.category}</span>
+                      <td className="px-3 py-2">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${movement.className}`}>
+                          {movement.label}
+                        </span>
+                        {row.notes && <p className="mt-0.5 text-xs text-slate-400">{row.notes}</p>}
                       </td>
-                      <td className="px-5 py-3.5 text-right font-semibold text-slate-800">{formatRupiah(product.price)}</td>
-                      <td className="px-5 py-3.5 text-right text-slate-600">{formatRupiah(product.cost_price)}</td>
-                      <td className={`px-5 py-3.5 text-right font-semibold ${product.stock <= product.min_stock ? 'text-red-600' : 'text-slate-800'}`}>
-                        {product.stock}
-                        {product.stock <= product.min_stock && (
-                          <span className="ml-2 text-[10px] bg-red-50 text-red-600 px-2 py-0.5 rounded-full font-semibold">Low</span>
-                        )}
+                      <td
+                        className={`px-3 py-2 text-right font-semibold ${
+                          row.quantity >= 0 ? 'text-emerald-600' : 'text-red-600'
+                        }`}
+                      >
+                        {row.quantity >= 0 ? '+' : ''}
+                        {formatNumber(row.quantity)}
                       </td>
-                      <td className="px-5 py-3.5 text-center">
-                        <div className="flex justify-center gap-1">
-                          <button onClick={() => openEditModal(product)} className="px-3 py-1.5 text-xs font-medium text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors">Edit</button>
-                          <button onClick={() => openStockModal(product)} className="px-3 py-1.5 text-xs font-medium text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors">Stok Masuk</button>
-                          <button onClick={() => openDeleteModal(product)} className="px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors">Hapus</button>
-                        </div>
-                      </td>
+                      <td className="px-3 py-2 text-right text-slate-600">{formatNumber(row.stock_after)}</td>
+                      <td className="px-3 py-2 text-slate-500">{row.user_name}</td>
                     </tr>
-                  ))
-                )}
+                  );
+                })}
               </tbody>
             </table>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm bg-black/40 animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-scale-in">
-            <div className="px-6 py-5 border-b border-slate-200/60">
-              <h2 className="text-xl font-bold text-slate-800">{editingProduct ? 'Edit Produk' : 'Tambah Produk'}</h2>
-            </div>
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Nama Produk</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
-                  placeholder="Masukkan nama produk"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Harga Jual</label>
-                  <input
-                    type="number"
-                    required
-                    value={formData.price}
-                    onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
-                    placeholder="0"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Harga Beli</label>
-                  <input
-                    type="number"
-                    required
-                    value={formData.cost_price}
-                    onChange={(e) => setFormData({ ...formData, cost_price: e.target.value })}
-                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
-                    placeholder="0"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Stok</label>
-                  <input
-                    type="number"
-                    required
-                    value={formData.stock}
-                    onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
-                    placeholder="0"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Stok Minimum</label>
-                  <input
-                    type="number"
-                    required
-                    value={formData.min_stock}
-                    onChange={(e) => setFormData({ ...formData, min_stock: e.target.value })}
-                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
-                    placeholder="0"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Kategori</label>
-                <select
-                  required
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
-                >
-                  <option value="">Pilih Kategori</option>
-                  <option value="Makanan">Makanan</option>
-                  <option value="Minuman">Minuman</option>
-                  <option value="Snack">Snack</option>
-                  <option value="Umum">Umum</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Barcode</label>
-                <input
-                  type="text"
-                  value={formData.barcode}
-                  onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
-                  placeholder="Opsional"
-                />
-              </div>
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-200/60">
-                <button type="button" onClick={() => setShowModal(false)} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-700 font-medium text-sm transition-colors">
-                  Batal
-                </button>
-                <button type="submit" disabled={submitting} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-medium text-sm transition-all shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed">
-                  {submitting ? 'Menyimpan...' : 'Simpan'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {showStockModal && selectedProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm bg-black/40 animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-scale-in">
-            <div className="px-6 py-5 border-b border-slate-200/60">
-              <h2 className="text-xl font-bold text-slate-800">Stok Masuk</h2>
-              <p className="text-sm text-slate-500 mt-1">{selectedProduct.name}</p>
-            </div>
-            <form onSubmit={handleStockIn} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Jumlah</label>
-                <input
-                  type="number"
-                  required
-                  min="1"
-                  value={stockData.quantity}
-                  onChange={(e) => setStockData({ ...stockData, quantity: e.target.value })}
-                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
-                  placeholder="Masukkan jumlah stok"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Catatan</label>
-                <input
-                  type="text"
-                  value={stockData.notes}
-                  onChange={(e) => setStockData({ ...stockData, notes: e.target.value })}
-                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
-                  placeholder="Opsional"
-                />
-              </div>
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-200/60">
-                <button type="button" onClick={() => setShowStockModal(false)} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-700 font-medium text-sm transition-colors">
-                  Batal
-                </button>
-                <button type="submit" disabled={submitting} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-medium text-sm transition-all shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed">
-                  {submitting ? 'Memproses...' : 'Proses'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {showDeleteModal && selectedProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm bg-black/40 animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm animate-scale-in">
-            <div className="p-6">
-              <div className="flex items-center justify-center w-14 h-14 bg-red-50 rounded-2xl mx-auto mb-4">
-                <span className="text-3xl">🗑️</span>
-              </div>
-              <h2 className="text-xl font-bold text-slate-800 text-center mb-2">Hapus Produk</h2>
-              <p className="text-slate-500 text-sm text-center mb-6">
-                Yakin ingin menghapus <span className="font-semibold text-slate-700">{selectedProduct.name}</span>? Tindakan ini tidak dapat dibatalkan.
-              </p>
-              <div className="flex gap-3">
-                <button onClick={() => setShowDeleteModal(false)} className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-700 font-medium text-sm transition-colors">
-                  Batal
-                </button>
-                <button onClick={handleDelete} disabled={submitting} className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-medium text-sm transition-all shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed">
-                  {submitting ? 'Menghapus...' : 'Hapus'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+      <ConfirmDialog
+        open={deleting !== null}
+        title="Hapus produk?"
+        destructive
+        loading={deleteLoading}
+        confirmLabel="Ya, hapus"
+        message={
+          <>
+            Produk <strong>{deleting?.name}</strong> akan disembunyikan dari daftar dan kasir. Riwayat transaksi yang
+            sudah ada tetap tersimpan dan tidak berubah.
+          </>
+        }
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleting(null)}
+      />
+    </>
   );
 }
+
+function IconAction({
+  label,
+  onClick,
+  danger = false,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className={`rounded-lg p-1.5 text-sm transition-colors ${
+        danger ? 'text-slate-400 hover:bg-red-50 hover:text-red-600' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+

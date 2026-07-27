@@ -1,38 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken } from '@/lib/auth';
+import { verifyToken, TOKEN_COOKIE } from '@/lib/auth';
 
-const publicPaths = ['/login', '/api/auth/login', '/api/auth/register'];
+/** Hanya login yang boleh diakses tanpa token. Pendaftaran mandiri sengaja tidak ada:
+ *  akun baru hanya bisa dibuat admin lewat /users. */
+const PUBLIC_PATHS = ['/login', '/api/auth/login'];
+
+/** Halaman yang hanya boleh dibuka ADMIN. API punya pengecekan sendiri di tiap route. */
+const ADMIN_PATHS = ['/users', '/settings', '/reports', '/suppliers', '/expenses'];
+
+function isPublic(pathname: string): boolean {
+  return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
+function matchesPrefix(pathname: string, prefixes: string[]): boolean {
+  return prefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const isApi = pathname.startsWith('/api');
 
-  if (pathname.startsWith('/_next') || pathname.startsWith('/favicon') || pathname.includes('.')) {
-    return NextResponse.next();
-  }
+  const token = request.cookies.get(TOKEN_COOKIE)?.value;
 
-  const token = request.cookies.get('token')?.value;
-  const isPublic = publicPaths.some(p => pathname.startsWith(p));
-
-  if (isPublic) {
-    if (token && pathname === '/login') {
-      const payload = await verifyToken(token);
-      if (payload) return NextResponse.redirect(new URL('/', request.url));
+  if (isPublic(pathname)) {
+    // Yang sudah login tidak perlu melihat halaman login lagi.
+    if (token && pathname === '/login' && (await verifyToken(token))) {
+      return NextResponse.redirect(new URL('/', request.url));
     }
     return NextResponse.next();
   }
 
-  if (!token) {
-    return NextResponse.redirect(new URL('/login', request.url));
+  const session = token ? await verifyToken(token) : null;
+
+  if (!session) {
+    // Request API harus dapat JSON 401, bukan redirect ke HTML halaman login —
+    // kalau di-redirect, fetch() di client menerima status 200 dan mengira sukses.
+    if (isApi) {
+      return NextResponse.json({ error: 'Sesi Anda sudah berakhir, silakan login kembali', code: 'UNAUTHORIZED' }, { status: 401 });
+    }
+    const loginUrl = new URL('/login', request.url);
+    if (pathname !== '/') loginUrl.searchParams.set('next', pathname);
+    const response = NextResponse.redirect(loginUrl);
+    response.cookies.delete(TOKEN_COOKIE);
+    return response;
   }
 
-  const payload = await verifyToken(token);
-  if (!payload) {
-    const res = NextResponse.redirect(new URL('/login', request.url));
-    res.cookies.delete('token');
-    return res;
-  }
-
-  if (pathname.startsWith('/users') && payload.role !== 'ADMIN') {
+  if (!isApi && session.role !== 'ADMIN' && matchesPrefix(pathname, ADMIN_PATHS)) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
@@ -40,5 +53,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  // Aset statis Next dan file publik dilewati lewat matcher ini, bukan lewat
+  // pengecekan "mengandung titik" yang dulu membuat /api/x/a.b lolos tanpa token.
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|webmanifest)$).*)'],
 };

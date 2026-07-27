@@ -1,19 +1,18 @@
-import { NextRequest } from 'next/server';
+import { requireAdmin, requireAuth } from '@/lib/auth';
 import { getSettings, updateSettings } from '@/lib/db';
-import { requireRole } from '@/lib/auth';
+import { json, readBody, route } from '@/lib/http';
+import { settingsSchema } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
-export async function GET() {
-  return Response.json(getSettings());
-}
+// Kasir perlu membacanya untuk tarif pajak dan header/footer struk.
+export const GET = route(async () => {
+  await requireAuth();
+  return json(getSettings());
+});
 
-export async function PUT(request: NextRequest) {
-  try {
-    await requireRole(['ADMIN']);
-    const body = await request.json();
-    return Response.json(updateSettings(body));
-  } catch (error: any) {
-    return Response.json({ error: error.message }, { status: error.message === 'Forbidden' ? 403 : 400 });
-  }
-}
+export const PUT = route(async (request) => {
+  await requireAdmin();
+  return json(updateSettings(await readBody(request, settingsSchema)));
+});

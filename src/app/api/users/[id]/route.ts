@@ -1,27 +1,29 @@
-import { NextRequest } from 'next/server';
-import { updateUser, deleteUser } from '@/lib/db';
-import { requireRole } from '@/lib/auth';
+import { requireAdmin } from '@/lib/auth';
+import { deleteUser, getUserById, updateUser } from '@/lib/db';
+import { json, notFound, readBody, route } from '@/lib/http';
+import { updateUserSchema } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
-export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    await requireRole(['ADMIN']);
-    const { id } = await params;
-    const body = await request.json();
-    return Response.json(updateUser(id, body));
-  } catch (error: any) {
-    return Response.json({ error: error.message }, { status: 400 });
-  }
-}
+export const GET = route(async (_request, { params }) => {
+  await requireAdmin();
+  const { id } = await params;
+  const user = getUserById(id);
+  if (!user) throw notFound('User tidak ditemukan');
+  return json(user);
+});
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    await requireRole(['ADMIN']);
-    const { id } = await params;
-    deleteUser(id);
-    return Response.json({ success: true });
-  } catch (error: any) {
-    return Response.json({ error: error.message }, { status: 400 });
-  }
-}
+export const PUT = route(async (request, { params }) => {
+  const session = await requireAdmin();
+  const { id } = await params;
+  const body = await readBody(request, updateUserSchema);
+  return json(updateUser(id, { ...body, password: body.password || undefined }, session.id));
+});
+
+export const DELETE = route(async (_request, { params }) => {
+  const session = await requireAdmin();
+  const { id } = await params;
+  deleteUser(id, session.id);
+  return json({ success: true });
+});

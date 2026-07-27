@@ -1,23 +1,29 @@
-import { NextRequest } from 'next/server';
-import { getAllProducts, createProduct, getCategories } from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { z } from 'zod';
+import { requireAdmin, requireAuth } from '@/lib/auth';
+import { createProduct, listProducts } from '@/lib/db';
+import { json, readBody, readQuery, route } from '@/lib/http';
+import { paginationSchema, productSchema } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
-export async function GET(request: NextRequest) {
-  const sp = request.nextUrl.searchParams;
-  if (sp.has('categories')) return Response.json(getCategories());
-  const products = getAllProducts(sp.get('search') || undefined, sp.get('category') || undefined);
-  return Response.json(products);
-}
+const querySchema = paginationSchema.extend({
+  search: z.string().max(100).optional(),
+  category: z.string().max(50).optional(),
+  lowStock: z
+    .enum(['true', 'false'])
+    .transform((v) => v === 'true')
+    .optional(),
+});
 
-export async function POST(request: NextRequest) {
-  try {
-    await requireAuth();
-    const body = await request.json();
-    const product = createProduct(body);
-    return Response.json(product, { status: 201 });
-  } catch (error: any) {
-    return Response.json({ error: error.message }, { status: error.message === 'Unauthorized' ? 401 : 400 });
-  }
-}
+export const GET = route(async (request) => {
+  await requireAuth();
+  const query = readQuery(request, querySchema);
+  return json(listProducts(query));
+});
+
+export const POST = route(async (request) => {
+  await requireAdmin();
+  const data = await readBody(request, productSchema);
+  return json(createProduct(data), 201);
+});

@@ -48,8 +48,39 @@ body {
   animation: shimmer 1.5s infinite;
 }
 
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Saat mencetak struk, sembunyikan seluruh aplikasi kecuali #receipt-print,
+   lalu jadikan elemen itu satu-satunya isi halaman selebar kertas 80mm. */
 @media print {
-  .no-print { display: none !important; }
-  .print-only { display: block !important; }
-  body { background: white; }
+  body * {
+    visibility: hidden;
+  }
+  #receipt-print,
+  #receipt-print * {
+    visibility: visible;
+  }
+  #receipt-print {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 76mm;
+    padding: 2mm;
+    color: #000;
+  }
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: white;
+  }
+  @page {
+    size: 80mm auto;
+    margin: 2mm;
+  }
 }
