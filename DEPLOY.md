@@ -97,10 +97,20 @@ Sandbox Midtrans tidak memerlukan verifikasi badan usaha.
    `https://kasir.domain-anda.com/api/payments/midtrans/webhook`
 4. Terapkan: `docker compose up -d`
 
-Menguji tanpa uang asli: buat transaksi QRIS di layar kasir, lalu buka
-**Simulator QRIS** Midtrans (<https://simulator.sandbox.midtrans.com/qris/index>),
-tempel isi QR-nya, dan tekan bayar. Layar kasir akan berubah jadi struk dalam
-beberapa detik.
+Menguji tanpa uang asli: buat transaksi QRIS di layar kasir, buka panel
+**"Mode sandbox — bayar lewat simulator"** di bawah QR, salin URL-nya, lalu
+tempel ke kolom **QR Code Image Url** di
+<https://simulator.sandbox.midtrans.com/qris/index>. Layar kasir berubah jadi
+struk dalam beberapa detik.
+
+> **Kalau simulator menjawab "Transaction is unsuccessful"** padahal tagihan
+> berhasil dibuat dan QR tampil normal, kemungkinan besar akun sandbox Anda
+> tidak diaktifkan untuk acquirer yang dipakai. Ganti `MIDTRANS_QRIS_ACQUIRER`
+> ke `airpay shopee` (atau sebaliknya ke `gopay`) lalu jalankan ulang.
+>
+> Cara memastikannya tanpa melibatkan aplikasi: buat dua tagihan uji langsung
+> ke `/v2/charge` dengan masing-masing acquirer, lalu coba bayar keduanya di
+> simulator. Yang berhasil itulah yang didukung akun Anda.
 
 Endpoint webhook sengaja terbuka tanpa sesi — pemanggilnya server Midtrans,
 bukan browser. Keasliannya diperiksa lewat tanda tangan SHA-512, dan notifikasi
