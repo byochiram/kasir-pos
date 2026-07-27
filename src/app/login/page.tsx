@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { api, errorMessage } from '@/lib/api-client';
 import { useApp } from '@/components/AppProvider';
 import Button from '@/components/ui/Button';
-import { LogoMark, LogoWordmark } from '@/components/Logo';
+import { LogoGlyph, LogoMark, LogoWordmark } from '@/components/Logo';
 
 /** Ikon SVG, bukan emoji: tampilannya konsisten di semua sistem operasi. */
 const FEATURES = [
@@ -155,38 +155,49 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <div className="flex min-h-dvh">
-      {/* Panel kiri memakai warna abu yang sama dengan panel kanan; pemisahnya
-          cukup satu garis tipis, bukan gradasi atau blok warna. */}
-      <div className="hidden flex-1 border-r border-line bg-surface-2 lg:flex lg:flex-col lg:justify-center lg:px-14">
-        <div>
-          <div className="mb-8 flex items-center gap-3">
-            <LogoMark className="h-12 w-12" />
-            <LogoWordmark className="text-2xl text-ink" />
+      {/* Bidang emerald pekat, bukan gradasi pucat: warnanya tegas dan teksturnya
+          datang dari kisi titik halus, bukan dari peralihan warna. */}
+      <div className="relative hidden flex-1 overflow-hidden bg-emerald-600 lg:flex lg:flex-col lg:justify-center lg:px-14 dark:bg-emerald-800">
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.18]"
+          style={{
+            backgroundImage: 'radial-gradient(currentColor 1px, transparent 1px)',
+            backgroundSize: '22px 22px',
+            color: '#ffffff',
+          }}
+          aria-hidden
+        />
+
+        <div className="relative">
+          <div className="mb-9 flex items-center gap-3">
+            <LogoGlyph className="h-11 w-11 text-white" />
+            {/* emerald-100, bukan 200: di atas emerald-600 yang lebih gelap
+                hanya mencapai kontras 2,9:1 dan gagal ambang teks besar. */}
+            <LogoWordmark className="text-2xl text-white" accentClassName="text-emerald-100" />
           </div>
 
-          <h1 className="max-w-md text-4xl font-bold leading-tight tracking-tight text-ink">
+          <h1 className="max-w-md text-4xl font-bold leading-tight tracking-tight text-white">
             Kelola penjualan toko Anda dalam satu tempat.
           </h1>
-          <p className="mt-4 max-w-md text-ink-muted">
+          <p className="mt-4 max-w-md text-emerald-50/90">
             Aplikasi kasir yang mencatat setiap transaksi, stok, dan laba — tanpa ribet.
           </p>
 
           <ul className="mt-10 max-w-md space-y-5">
             {FEATURES.map((feature) => (
               <li key={feature.text} className="flex items-center gap-3.5">
-                <span className="shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden>
+                <span
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/15 text-white"
+                  aria-hidden
+                >
                   <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d={feature.icon} />
                   </svg>
                 </span>
-                <span className="text-sm text-ink-muted">{feature.text}</span>
+                <span className="text-sm text-emerald-50">{feature.text}</span>
               </li>
             ))}
           </ul>
-
-          <p className="mt-12 max-w-md text-xs text-ink-subtle">
-            Dibangun dengan Next.js, SQLite, dan integrasi pembayaran Midtrans.
-          </p>
         </div>
       </div>
 
