@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { api, errorMessage } from '@/lib/api-client';
 import { useApp } from '@/components/AppProvider';
 import Button from '@/components/ui/Button';
-import { LogoGlyph, LogoMark, LogoWordmark } from '@/components/Logo';
+import { LogoMark, LogoWordmark } from '@/components/Logo';
 
 /** Ikon SVG, bukan emoji: tampilannya konsisten di semua sistem operasi. */
 const FEATURES = [
@@ -152,49 +152,98 @@ function LoginForm() {
   );
 }
 
+/**
+ * Pratinjau statis berisi kartu omzet dan struk.
+ *
+ * Angkanya sengaja dibuat contoh, bukan diambil dari database: halaman login
+ * belum punya sesi, dan omzet toko bukan sesuatu yang pantas ditampilkan
+ * sebelum orang masuk.
+ */
+function PreviewCards() {
+  const bars = [38, 52, 44, 68, 58, 82, 100];
+
+  return (
+    <div className="relative mt-10 h-[248px] max-w-md" aria-hidden>
+      {/* Kartu omzet: satu-satunya bidang emerald, jadi ia yang menarik mata. */}
+      <div className="absolute left-0 top-0 w-64 -rotate-2 rounded-2xl bg-emerald-600 p-4 text-white shadow-xl shadow-emerald-600/20">
+        <p className="text-[11px] uppercase tracking-wide text-emerald-100">Omzet Hari Ini</p>
+        <p className="mt-1 text-2xl font-bold">Rp 2.450.000</p>
+        <div className="mt-3 flex h-10 items-end gap-1.5">
+          {bars.map((height, index) => (
+            <span
+              key={index}
+              className="flex-1 rounded-sm bg-white/35 last:bg-white"
+              style={{ height: `${height}%` }}
+            />
+          ))}
+        </div>
+        <p className="mt-2.5 text-[11px] text-emerald-100">+12% dari kemarin</p>
+      </div>
+
+      {/* Struk menimpa sebagian kartu omzet supaya komposisinya terasa bertumpuk. */}
+      <div className="absolute right-0 top-20 w-56 rotate-2 rounded-2xl border border-line bg-surface p-4 font-mono shadow-xl">
+        <p className="text-center text-[11px] font-bold uppercase tracking-wide text-ink">KasirApp Store</p>
+        <div className="my-2 border-t border-dashed border-line" />
+        {[
+          ['Nasi Goreng', '18.000'],
+          ['Es Teh Manis', '5.000'],
+          ['Kerupuk', '2.000'],
+        ].map(([item, price]) => (
+          <div key={item} className="flex justify-between text-[10px] text-ink-muted">
+            <span>{item}</span>
+            <span>{price}</span>
+          </div>
+        ))}
+        <div className="my-2 border-t border-dashed border-line" />
+        <div className="flex justify-between text-[11px] font-bold text-ink">
+          <span>TOTAL</span>
+          <span>Rp 27.750</span>
+        </div>
+        <div className="mt-3 flex items-center justify-center gap-1.5 rounded-lg bg-emerald-50 py-1.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+          </svg>
+          QRIS Lunas
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function LoginPage() {
   return (
     <div className="flex min-h-dvh">
-      {/* Bidang emerald pekat, bukan gradasi pucat: warnanya tegas dan teksturnya
-          datang dari kisi titik halus, bukan dari peralihan warna. */}
-      <div className="relative hidden flex-1 overflow-hidden bg-emerald-600 lg:flex lg:flex-col lg:justify-center lg:px-14 dark:bg-emerald-800">
-        <div
-          className="pointer-events-none absolute inset-0 opacity-[0.18]"
-          style={{
-            backgroundImage: 'radial-gradient(currentColor 1px, transparent 1px)',
-            backgroundSize: '22px 22px',
-            color: '#ffffff',
-          }}
-          aria-hidden
-        />
-
-        <div className="relative">
-          <div className="mb-9 flex items-center gap-3">
-            <LogoGlyph className="h-11 w-11 text-white" />
-            {/* emerald-100, bukan 200: di atas emerald-600 yang lebih gelap
-                hanya mencapai kontras 2,9:1 dan gagal ambang teks besar. */}
-            <LogoWordmark className="text-2xl text-white" accentClassName="text-emerald-100" />
+      {/* Latar dibiarkan netral; warnanya datang dari kartu pratinjau, sehingga
+          logo emerald tetap menonjol dan tidak melebur dengan bidang di belakangnya. */}
+      <div className="hidden flex-1 border-r border-line bg-surface-2 lg:flex lg:flex-col lg:justify-center lg:px-14">
+        <div>
+          <div className="mb-8 flex items-center gap-3">
+            <LogoMark className="h-12 w-12" />
+            <LogoWordmark className="text-2xl text-ink" />
           </div>
 
-          <h1 className="max-w-md text-4xl font-bold leading-tight tracking-tight text-white">
+          <h1 className="max-w-md text-4xl font-bold leading-tight tracking-tight text-ink">
             Kelola penjualan toko Anda dalam satu tempat.
           </h1>
-          <p className="mt-4 max-w-md text-emerald-50/90">
+          <p className="mt-3.5 max-w-md text-ink-muted">
             Aplikasi kasir yang mencatat setiap transaksi, stok, dan laba — tanpa ribet.
           </p>
 
-          <ul className="mt-10 max-w-md space-y-5">
+          <PreviewCards />
+
+          <ul className="mt-9 flex max-w-md flex-wrap gap-x-5 gap-y-2">
             {FEATURES.map((feature) => (
-              <li key={feature.text} className="flex items-center gap-3.5">
-                <span
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/15 text-white"
+              <li key={feature.text} className="flex items-center gap-1.5 text-xs text-ink-muted">
+                <svg
+                  className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
                   aria-hidden
                 >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d={feature.icon} />
-                  </svg>
-                </span>
-                <span className="text-sm text-emerald-50">{feature.text}</span>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                </svg>
+                {feature.text}
               </li>
             ))}
           </ul>

@@ -41,28 +41,6 @@ export function LogoMark({ className = 'h-9 w-9' }: { className?: string }) {
   );
 }
 
-/**
- * Lambang tanpa kotak latar, mewarisi warna teks induknya.
- * Dipakai di atas bidang berwarna, tempat kotak emerald akan melebur.
- */
-export function LogoGlyph({ className = 'h-9 w-9' }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 40 40" className={className} role="img" aria-label="KasirApp">
-      <path
-        d="M12 6h16a1 1 0 0 1 1 1v26.5l-2.8-1.9-2.8 1.9-2.8-1.9-2.8 1.9-2.8-1.9-2.8 1.9L11 33.5V7a1 1 0 0 1 1-1z"
-        fill="currentColor"
-      />
-      {/* Baris item dilubangi, bukan digambar, supaya ikut warna apa pun latarnya. */}
-      <rect x="15" y="12" width="10" height="2.4" rx="1.2" fill="currentColor" fillOpacity="0.01" />
-      <g fill="#059669">
-        <rect x="15" y="12" width="10" height="2.4" rx="1.2" />
-        <rect x="15" y="17.5" width="10" height="2.4" rx="1.2" fillOpacity="0.6" />
-        <rect x="15" y="23" width="6" height="2.4" rx="1.2" fillOpacity="0.4" />
-      </g>
-    </svg>
-  );
-}
-
 export function LogoWordmark({
   className = '',
   accentClassName = 'text-emerald-600 dark:text-emerald-400',
